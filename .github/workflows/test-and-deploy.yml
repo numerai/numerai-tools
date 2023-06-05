@@ -3,8 +3,6 @@ name: Test & Deploy Numerai Tools
 on:
   workflow_dispatch:
   push:
-    # branches:
-    #   - master
 
 concurrency: deploy-numerai-tools-${{ github.ref }}
 
@@ -25,11 +23,13 @@ jobs:
 
       - name: Test
         id: test
-        run: pip install .
-        run: python -m unittest discover tests/
+        run: |
+          pip install .
+          python -m unittest discover tests/
 
       - name: Deploy
         id: deploy
+        # if: github.ref == 'refs/heads/master'
         run: |
           pip install twine wheel
           python setup.py sdist bdist_wheel
