@@ -1,0 +1,36 @@
+name: Test & Deploy Numerai Tools
+
+on:
+  workflow_dispatch:
+  push:
+
+concurrency: deploy-numerai-tools-${{ github.ref }}
+
+jobs:
+  test-and-deploy-numerai-tools:
+    name: Test & Deploy Numerai Tools
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-20.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.7.9"
+
+      - name: Test
+        id: test
+        run: |
+          pip install .
+          python -m unittest discover tests/
+
+      - name: Deploy
+        id: deploy
+        if: github.ref == 'refs/heads/master'
+        run: |
+          pip install twine wheel
+          python setup.py sdist bdist_wheel
+          python -m twine upload -u __token__ -p ${{ secrets.PYPI_API_KEY }} --skip-existing dist/*
