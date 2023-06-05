@@ -25,6 +25,7 @@ jobs:
 
       - name: Test
         id: test
+        run: pip install .
         run: python -m unittest discover tests/
 
       - name: Deploy
