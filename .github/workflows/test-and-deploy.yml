@@ -29,7 +29,7 @@ jobs:
 
       - name: Deploy
         id: deploy
-        # if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master'
         run: |
           pip install twine wheel
           python setup.py sdist bdist_wheel
