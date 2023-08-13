@@ -1,9 +1,16 @@
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.preprocessing import OneHotEncoder
+
+
+# sometimes when we match up the target/prediction indices,
+# changes in Numerai data generation can cause some stocks to get filtered out
+# (e.g. when there are a lot of NaNs in the target),
+# this ensures we don't filter too much
+DEFAULT_MAX_FILTERED_INDEX_RATIO = 0.2
 
 
 # this is primarily used b/c round 326 had too many stocks,
@@ -12,7 +19,7 @@ from sklearn.preprocessing import OneHotEncoder
 def filter_sort_index(
     s1: Union[pd.DataFrame, pd.Series],
     s2: Union[pd.DataFrame, pd.Series],
-    max_filtered_ratio: float = 0.2,
+    max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     ids = s1.dropna().index.intersection(s2.dropna().index)
     # ensure we didn't filter too many ids
@@ -207,7 +214,11 @@ def tie_kept_rank__gaussianize__neutralize(
     return neutralize(gaussian(tie_kept_rank(df)), neutralizers)
 
 
-def numerai_corr(predictions: pd.DataFrame, targets: pd.Series) -> pd.Series:
+def numerai_corr(
+    predictions: pd.DataFrame,
+    targets: pd.Series,
+    max_filtered_index_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
+) -> pd.Series:
     """Recenter the target on 0, filter and sort indices, apply tie_kept_rank__gaussianize__pow_1_5
     to the predictions, raise the targets to the 1.5 power, then calculate the
     pearson correlation between the predictions and targets.
@@ -215,13 +226,17 @@ def numerai_corr(predictions: pd.DataFrame, targets: pd.Series) -> pd.Series:
     Arguments:
         predictions: pd.DataFrame - the predictions to evaluate
         targets: pd.Series - the live targets to evaluate against
+        max_filtered_index_ratio: float - the maximum ratio of indices that can be dropped
+                                          when matching up the targets and predictions
 
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
 
     """
     targets -= targets.mean()
-    targets, predictions = filter_sort_index(targets, predictions)
+    targets, predictions = filter_sort_index(
+        targets, predictions, max_filtered_index_ratio
+    )
     predictions = tie_kept_rank__gaussianize__pow_1_5(predictions)
     targets = power(targets.to_frame(), 1.5)[targets.name]
     scores = predictions.apply(lambda sub: pearson_correlation(targets, sub))
