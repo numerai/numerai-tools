@@ -40,6 +40,6 @@ if __name__ == "__main__":
             "pandas~=1.3.5",
             "numpy~=1.21.6",
             "scipy~=1.2.1",
-            "sklearn~=0.0",
+            "scikit-learn~=1.0",
         ],
     )
