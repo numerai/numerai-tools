@@ -61,6 +61,11 @@ def min_max_normalize(s: pd.Series) -> pd.Series:
     return (s - s.min()) / (s.max() - s.min())
 
 
+def variance_normalize(df: pd.DataFrame) -> pd.DataFrame:
+    # scale a df such that all columns have std == 1.
+    return df / np.std(df, axis=0)
+
+
 def validate_indices(live_targets: pd.Series, predictions: pd.Series) -> None:
     # ensure the ids are equivalent and sorted
     assert np.array_equal(predictions.index, live_targets.index.sort_values())
@@ -116,7 +121,8 @@ def power(df: pd.DataFrame, p: float) -> pd.DataFrame:
 
 
 def gaussian(df: pd.DataFrame) -> pd.DataFrame:
-    """Gaussianize each column of a pandas DataFrame using a normal percent point func
+    """Gaussianize each column of a pandas DataFrame using a normal percent point func.
+    Effectively scales each column such that mean == 0 and std == 1.
 
     Arguments:
         df: pd.DataFrame - the data to gaussianize
@@ -129,10 +135,14 @@ def gaussian(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def neutralize(
-    df: pd.DataFrame, neutralizers: np.ndarray, proportion: float = 1.0
+    df: pd.DataFrame,
+    neutralizers: np.ndarray,
+    proportion: float = 1.0,
 ) -> pd.DataFrame:
     """Neutralize each column of a given DataFrame by each feature in a given
-    neutralizers DataFrame.
+    neutralizers DataFrame. Neutralization uses least-squares regression to
+    find the orthogonal projection of each column onto the neutralizers, then
+    subtracts the result from the original predictions.
 
     Arguments:
         df: pd.DataFrame - the data with columns to neutralize
@@ -149,10 +159,13 @@ def neutralize(
     df[df.columns[df.std() == 0]] = np.nan
     df_arr = df.values
     neutralizer_arr = neutralizers.values
+    neutralizer_arr = np.hstack(
+        # add a column of 1s to the neutralizer array in case neutralizer_arr is a single column
+        (neutralizer_arr, np.array([1] * len(neutralizer_arr)).reshape(-1, 1))
+    )
     inverse_neutralizers = np.linalg.pinv(neutralizer_arr, rcond=1e-6)
     adjustments = proportion * neutralizer_arr.dot(inverse_neutralizers.dot(df_arr))
     neutral = df_arr - adjustments
-    neutral /= np.std(neutral, axis=0)
     return pd.DataFrame(neutral, index=df.index, columns=df.columns)
 
 
@@ -199,11 +212,14 @@ def tie_kept_rank__gaussianize__pow_1_5(df: pd.DataFrame) -> pd.DataFrame:
     return power(gaussian(tie_kept_rank(df)), 1.5)
 
 
-def tie_kept_rank__gaussianize__neutralize(
+def tie_kept_rank__gaussianize__neutralize__variance_normalize(
     df: pd.DataFrame, neutralizers: pd.DataFrame
 ) -> pd.DataFrame:
-    """Perform the 3 functions in order on the given pandas DataFrame.
-    Will tie-kept rank then gaussianize then neutralize the df to the neutralizers.
+    """Perform the 4 functions in order on the given pandas DataFrame.
+    1. tie-kept rank each column
+    2. gaussianize each column
+    3. neutralize each column to the neutralizers
+    4. variance normalize each column
 
     Arguments:
         df: pd.DataFrame - the data to transform
@@ -211,7 +227,7 @@ def tie_kept_rank__gaussianize__neutralize(
     Returns:
         pd.DataFrame - the resulting data after applying the 3 functions
     """
-    return neutralize(gaussian(tie_kept_rank(df)), neutralizers)
+    return variance_normalize(neutralize(gaussian(tie_kept_rank(df)), neutralizers))
 
 
 def numerai_corr(
@@ -219,9 +235,12 @@ def numerai_corr(
     targets: pd.Series,
     max_filtered_index_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
 ) -> pd.Series:
-    """Recenter the target on 0, filter and sort indices, apply tie_kept_rank__gaussianize__pow_1_5
-    to the predictions, raise the targets to the 1.5 power, then calculate the
-    pearson correlation between the predictions and targets.
+    """Calculates the canonical Numerai correlation.
+    1. Re-center the target on 0
+    2. filter and sort indices
+    3. apply tie_kept_rank__gaussianize__pow_1_5 to the predictions
+    4. raise the targets to the 1.5 power
+    5. calculate the pearson correlation between the predictions and targets.
 
     Arguments:
         predictions: pd.DataFrame - the predictions to evaluate
@@ -241,3 +260,26 @@ def numerai_corr(
     targets = power(targets.to_frame(), 1.5)[targets.name]
     scores = predictions.apply(lambda sub: pearson_correlation(targets, sub))
     return scores
+
+
+def feature_neutral_corr(
+    predictions: pd.DataFrame,
+    features: pd.DataFrame,
+    targets: pd.Series,
+):
+    """Calculates the canonical Numerai feature-neutral correlation.
+    1. neutralize predictions relative to the features
+    2. calculate the numerai_corr between the neutralized predictions and targets
+
+    Arguments:
+        predictions: pd.DataFrame - the predictions to evaluate
+        features: pd.DataFrame - the features to neutralize the predictions against
+        targets: pd.Series - the live targets to evaluate against
+
+    Returns:
+        pd.Series - the resulting correlation scores for each column in predictions
+    """
+    neutral_preds = tie_kept_rank__gaussianize__neutralize__variance_normalize(
+        predictions, features
+    )
+    return numerai_corr(neutral_preds, targets)
