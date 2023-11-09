@@ -97,38 +97,6 @@ class TestScoring(unittest.TestCase):
             ],
         ).all()
 
-    def test_neutralize(self):
-        assert np.isclose(
-            neutralize(self.up.to_frame(), pd.DataFrame([0, 0, 0, 0, 0])).values.T,
-            self.up - self.up.mean(),
-        ).all()
-        assert np.isclose(
-            neutralize(
-                pd.concat([self.up, self.down], axis=1),
-                pd.concat(
-                    [pd.Series([0, 0, 0, 0, 0]), pd.Series([0, 0, 0, 0, 0])], axis=1
-                ),
-            ).values.T,
-            pd.concat(
-                [self.up - self.up.mean(), self.down - self.down.mean()], axis=1
-            ).values.T,
-        ).all()
-        assert np.isclose(
-            neutralize(self.up_down.to_frame(), self.down_up.to_frame()).values.T,
-            [0, 0, 0, 0, 0],
-        ).all()
-        # ensure it works for multiple submissions/neutralizers
-        assert np.isclose(
-            neutralize(
-                pd.concat([self.up_down, self.up_down], axis=1),
-                pd.concat([self.down_up, self.down_up], axis=1),
-            ).values.T,
-            [
-                [0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0],
-            ],
-        ).all()
-
     def test_one_hot_encode(self):
         assert np.isclose(
             one_hot_encode(self.up.to_frame(), ['up']).values.T,
@@ -165,5 +133,37 @@ class TestScoring(unittest.TestCase):
                 [0.0000000000000000],
                 [0.3797472709071261],
                 [1.4507885796854221],
+            ],
+        ).all()
+
+    def test_neutralize(self):
+        assert np.isclose(
+            neutralize(self.up.to_frame(), pd.DataFrame([0, 0, 0, 0, 0])).values.T,
+            self.up - self.up.mean(),
+        ).all()
+        assert np.isclose(
+            neutralize(
+                pd.concat([self.up, self.down], axis=1),
+                pd.concat(
+                    [pd.Series([0, 0, 0, 0, 0]), pd.Series([0, 0, 0, 0, 0])], axis=1
+                ),
+            ).values.T,
+            pd.concat(
+                [self.up - self.up.mean(), self.down - self.down.mean()], axis=1
+            ).values.T,
+        ).all()
+        assert np.isclose(
+            neutralize(self.up_down.to_frame(), self.down_up.to_frame()).values.T,
+            [0, 0, 0, 0, 0],
+        ).all()
+        # ensure it works for multiple submissions/neutralizers
+        assert np.isclose(
+            neutralize(
+                pd.concat([self.up_down, self.up_down], axis=1),
+                pd.concat([self.down_up, self.down_up], axis=1),
+            ).values.T,
+            [
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
             ],
         ).all()

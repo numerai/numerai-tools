@@ -235,9 +235,12 @@ def numerai_corr(
     targets: pd.Series,
     max_filtered_index_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
 ) -> pd.Series:
-    """Recenter the target on 0, filter and sort indices, apply tie_kept_rank__gaussianize__pow_1_5
-    to the predictions, raise the targets to the 1.5 power, then calculate the
-    pearson correlation between the predictions and targets.
+    """Calculates the canonical Numerai correlation.
+    1. Re-center the target on 0
+    2. filter and sort indices
+    3. apply tie_kept_rank__gaussianize__pow_1_5 to the predictions
+    4. raise the targets to the 1.5 power
+    5. calculate the pearson correlation between the predictions and targets.
 
     Arguments:
         predictions: pd.DataFrame - the predictions to evaluate
@@ -257,3 +260,26 @@ def numerai_corr(
     targets = power(targets.to_frame(), 1.5)[targets.name]
     scores = predictions.apply(lambda sub: pearson_correlation(targets, sub))
     return scores
+
+
+def feature_neutral_corr(
+    predictions: pd.DataFrame,
+    features: pd.DataFrame,
+    targets: pd.Series,
+):
+    """Calculates the canonical Numerai feature-neutral correlation.
+    1. neutralize predictions relative to the features
+    2. calculate the numerai_corr between the neutralized predictions and targets
+
+    Arguments:
+        predictions: pd.DataFrame - the predictions to evaluate
+        features: pd.DataFrame - the features to neutralize the predictions against
+        targets: pd.Series - the live targets to evaluate against
+
+    Returns:
+        pd.Series - the resulting correlation scores for each column in predictions
+    """
+    neutral_preds = tie_kept_rank__gaussianize__neutralize__variance_normalize(
+        predictions, features
+    )
+    return numerai_corr(neutral_preds, targets)
