@@ -61,6 +61,11 @@ def min_max_normalize(s: pd.Series) -> pd.Series:
     return (s - s.min()) / (s.max() - s.min())
 
 
+def variance_normalize(df: pd.DataFrame) -> pd.DataFrame:
+    # scale a df such that all columns have std == 1.
+    return df / np.std(df, axis=0)
+
+
 def validate_indices(live_targets: pd.Series, predictions: pd.Series) -> None:
     # ensure the ids are equivalent and sorted
     assert np.array_equal(predictions.index, live_targets.index.sort_values())
@@ -116,7 +121,8 @@ def power(df: pd.DataFrame, p: float) -> pd.DataFrame:
 
 
 def gaussian(df: pd.DataFrame) -> pd.DataFrame:
-    """Gaussianize each column of a pandas DataFrame using a normal percent point func
+    """Gaussianize each column of a pandas DataFrame using a normal percent point func.
+    Effectively scales each column such that mean == 0 and std == 1.
 
     Arguments:
         df: pd.DataFrame - the data to gaussianize
@@ -129,15 +135,19 @@ def gaussian(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def neutralize(
-    df: pd.DataFrame, neutralizers: np.ndarray, proportion: float = 1.0
+    df: pd.DataFrame,
+    neutralizers: np.ndarray,
+    proportion: float = 1.0,
 ) -> pd.DataFrame:
     """Neutralize each column of a given DataFrame by each feature in a given
-    neutralizers DataFrame.
+    neutralizers DataFrame. Variance-normalize the result by default.
 
     Arguments:
         df: pd.DataFrame - the data with columns to neutralize
         neutralizers: pd.DataFrame - the neutralizer data with features as columns
         proportion: float - the degree to which neutralization occurs
+        variance_normalize: bool - if true, divides the neutralized columns by
+                                   their standard deviations before returning
 
     Returns:
         pd.DataFrame - the neutralized data
@@ -149,10 +159,13 @@ def neutralize(
     df[df.columns[df.std() == 0]] = np.nan
     df_arr = df.values
     neutralizer_arr = neutralizers.values
+    neutralizer_arr = np.hstack(
+        # add a column of 1s to the neutralizer array in case neutralizer_arr is a single column
+        (neutralizer_arr, np.array([1] * len(neutralizer_arr)).reshape(-1, 1))
+    )
     inverse_neutralizers = np.linalg.pinv(neutralizer_arr, rcond=1e-6)
     adjustments = proportion * neutralizer_arr.dot(inverse_neutralizers.dot(df_arr))
     neutral = df_arr - adjustments
-    neutral /= np.std(neutral, axis=0)
     return pd.DataFrame(neutral, index=df.index, columns=df.columns)
 
 
@@ -199,11 +212,14 @@ def tie_kept_rank__gaussianize__pow_1_5(df: pd.DataFrame) -> pd.DataFrame:
     return power(gaussian(tie_kept_rank(df)), 1.5)
 
 
-def tie_kept_rank__gaussianize__neutralize(
+def tie_kept_rank__gaussianize__neutralize__variance_normalize(
     df: pd.DataFrame, neutralizers: pd.DataFrame
 ) -> pd.DataFrame:
-    """Perform the 3 functions in order on the given pandas DataFrame.
-    Will tie-kept rank then gaussianize then neutralize the df to the neutralizers.
+    """Perform the 4 functions in order on the given pandas DataFrame.
+    1. tie-kept rank each column
+    2. gaussianize each column
+    3. neutralize each column to the neutralizers
+    4. variance normalize each column
 
     Arguments:
         df: pd.DataFrame - the data to transform
@@ -211,7 +227,7 @@ def tie_kept_rank__gaussianize__neutralize(
     Returns:
         pd.DataFrame - the resulting data after applying the 3 functions
     """
-    return neutralize(gaussian(tie_kept_rank(df)), neutralizers)
+    return variance_normalize(neutralize(gaussian(tie_kept_rank(df)), neutralizers))
 
 
 def numerai_corr(

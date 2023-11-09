@@ -15,6 +15,7 @@ from numerai_tools.scoring import (
     one_hot_encode,
     power,
     tie_kept_rank__gaussianize__pow_1_5,
+    variance_normalize,
 )
 
 
@@ -84,11 +85,37 @@ class TestScoring(unittest.TestCase):
             [-np.inf, -0.6744897501960817, 0, 0.6744897501960817, np.inf],
         ).all()
 
+    def test_variance_normalize(self):
+        assert np.isclose(
+            variance_normalize(self.up_float).values.T,
+            [
+                0.0,
+                0.7071067811865475,
+                1.414213562373095,
+                2.1213203435596424,
+                2.82842712474619,
+            ],
+        ).all()
+
     def test_neutralize(self):
-        reciprocal_std_dev = 1 / self.up_down.values.std()
+        assert np.isclose(
+            neutralize(self.up.to_frame(), pd.DataFrame([0, 0, 0, 0, 0])).values.T,
+            self.up - self.up.mean(),
+        ).all()
+        assert np.isclose(
+            neutralize(
+                pd.concat([self.up, self.down], axis=1),
+                pd.concat(
+                    [pd.Series([0, 0, 0, 0, 0]), pd.Series([0, 0, 0, 0, 0])], axis=1
+                ),
+            ).values.T,
+            pd.concat(
+                [self.up - self.up.mean(), self.down - self.down.mean()], axis=1
+            ).values.T,
+        ).all()
         assert np.isclose(
             neutralize(self.up_down.to_frame(), self.down_up.to_frame()).values.T,
-            [reciprocal_std_dev, 0, reciprocal_std_dev, 0, reciprocal_std_dev],
+            [0, 0, 0, 0, 0],
         ).all()
         # ensure it works for multiple submissions/neutralizers
         assert np.isclose(
@@ -97,8 +124,8 @@ class TestScoring(unittest.TestCase):
                 pd.concat([self.down_up, self.down_up], axis=1),
             ).values.T,
             [
-                [reciprocal_std_dev, 0, reciprocal_std_dev, 0, reciprocal_std_dev],
-                [reciprocal_std_dev, 0, reciprocal_std_dev, 0, reciprocal_std_dev],
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
             ],
         ).all()
 
