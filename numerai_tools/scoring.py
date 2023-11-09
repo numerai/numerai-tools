@@ -140,7 +140,9 @@ def neutralize(
     proportion: float = 1.0,
 ) -> pd.DataFrame:
     """Neutralize each column of a given DataFrame by each feature in a given
-    neutralizers DataFrame. Variance-normalize the result by default.
+    neutralizers DataFrame. Neutralization uses least-squares regression to
+    find the orthogonal projection of each column onto the neutralizers, then
+    subtracts the result from the original predictions.
 
     Arguments:
         df: pd.DataFrame - the data with columns to neutralize
