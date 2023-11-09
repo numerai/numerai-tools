@@ -148,8 +148,6 @@ def neutralize(
         df: pd.DataFrame - the data with columns to neutralize
         neutralizers: pd.DataFrame - the neutralizer data with features as columns
         proportion: float - the degree to which neutralization occurs
-        variance_normalize: bool - if true, divides the neutralized columns by
-                                   their standard deviations before returning
 
     Returns:
         pd.DataFrame - the neutralized data
