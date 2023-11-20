@@ -28,7 +28,7 @@ def filter_sort_index(
     return s1.loc[ids].sort_index(), s2.loc[ids].sort_index()
 
 
-def rank(df: pd.DataFrame, method: str = 'average') -> pd.DataFrame:
+def rank(df: pd.DataFrame, method: str = "average") -> pd.DataFrame:
     """Percentile rank each column of a pandas DataFrame, centering values around 0.5
 
     Arguments:
@@ -134,6 +134,82 @@ def gaussian(df: pd.DataFrame) -> pd.DataFrame:
     return df.apply(lambda series: stats.norm.ppf(series))
 
 
+def orthogonalize(v: np.ndarray, u: np.ndarray) -> np.ndarray:
+    """Orthogonalizes v with respect to u by projecting v onto u,
+    then subtracting that projection from v.
+
+    This will reach the same result as the neutralize
+    function when v and u are single column vectors,
+    but this is much faster.
+
+    Arguments:
+        v: np.ndarray - the vector to orthogonalize
+        u: np.ndarray - the vector orthogonalize v
+
+    Returns:
+        np.ndarray - the orthogonalized vector v
+    """
+    return v - np.outer(u, (v.T @ u) / (u.T @ u))
+
+
+def stake_weight(
+    predictions: pd.DataFrame,
+    stakes: pd.Series,
+) -> pd.Series:
+    """Create a stake-weighted meta model from the given predictions and stakes.
+
+    Arguments:
+        predictions: pd.DataFrame - the predictions to weight
+        stakes: pd.Series - the stakes to use as weights
+
+    Returns:
+        pd.Series - the stake-weighted meta model
+    """
+    return (predictions[stakes.index] * stakes).sum(axis=1) / stakes.sum()
+
+
+def contributive_correlation(
+    predictions: pd.DataFrame,
+    meta_model: pd.Series,
+    live_targets: pd.Series,
+) -> pd.Series:
+    """Calculate the contributive correlation of the given predictions
+    wrt the given meta model.
+
+    Then calculate contributive correlation by:
+    1. tie-kept ranking each prediction and the meta model
+    2. gaussianizing each prediction and the meta model
+    3. orthogonalizing each prediction wrt the meta model
+    4. multiplying the orthogonalized predictions and the targets
+
+    Arguments:
+        predictions: pd.DataFrame - the predictions to evaluate
+        meta_model: pd.Series - the meta model to evaluate against
+        live_targets: pd.Series - the live targets to evaluate against
+
+    Returns:
+        pd.Series - the resulting contributive correlation
+                    scores for each column in predictions
+    """
+    # filter and sort preds, mm, and targets wrt each other
+    meta_model, predictions = filter_sort_index(meta_model, predictions)
+    live_targets, predictions = filter_sort_index(live_targets, predictions)
+    live_targets, meta_model = filter_sort_index(live_targets, meta_model)
+
+    # rank and normalize meta model and predictions so mean=0 and std=1
+    p = gaussian(tie_kept_rank(predictions)).values
+    m = gaussian(tie_kept_rank(meta_model.to_frame()))[meta_model.name].values
+
+    # orthogonalize predictions wrt meta model
+    neutral_preds = orthogonalize(p, m)
+
+    # multiply target and neutralized predictions
+    # this is equivalent to covariance b/c mean = 0
+    mmc = (live_targets @ neutral_preds) / len(live_targets)
+
+    return pd.Series(mmc, index=predictions.columns)
+
+
 def neutralize(
     df: pd.DataFrame,
     neutralizers: np.ndarray,
@@ -151,7 +227,6 @@ def neutralize(
 
     Returns:
         pd.DataFrame - the neutralized data
-
     """
     assert not neutralizers.isna().any().any(), "Neutralizers contain NaNs"
     assert len(df.index) == len(neutralizers.index), "Indices don't match"
@@ -184,7 +259,6 @@ def one_hot_encode(
 
     Returns:
         pd.DataFrame - original data, but specified cols replaced w/ one-hot encoding
-
     """
     for col in columns:
         encoder = OneHotEncoder(dtype=dtype)
@@ -207,7 +281,6 @@ def tie_kept_rank__gaussianize__pow_1_5(df: pd.DataFrame) -> pd.DataFrame:
 
     Returns:
         pd.DataFrame - the resulting data after applying the 3 functions
-
     """
     return power(gaussian(tie_kept_rank(df)), 1.5)
 
@@ -250,7 +323,6 @@ def numerai_corr(
 
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
-
     """
     targets -= targets.mean()
     targets, predictions = filter_sort_index(
