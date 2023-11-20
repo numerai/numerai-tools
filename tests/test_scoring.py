@@ -16,20 +16,22 @@ from numerai_tools.scoring import (
     power,
     tie_kept_rank__gaussianize__pow_1_5,
     variance_normalize,
+    orthogonalize,
+    stake_weight,
 )
 
 
 class TestScoring(unittest.TestCase):
     def setUp(self):
-        print(f'\n running {type(self).__name__}')
+        print(f"\n running {type(self).__name__}")
 
-        self.up = pd.Series(list(range(5))).rename('up')
-        self.down = pd.Series(list(reversed(range(5)))).rename('down')
-        self.up_down = pd.Series([1, 0, 1, 0, 1]).rename('up_down')
-        self.down_up = (1 - self.up_down).rename('down_up')
-        self.up_float = (self.up / self.up.max()).rename('up_float')
+        self.up = pd.Series(list(range(5))).rename("up")
+        self.down = pd.Series(list(reversed(range(5)))).rename("down")
+        self.up_down = pd.Series([1, 0, 1, 0, 1]).rename("up_down")
+        self.down_up = (1 - self.up_down).rename("down_up")
+        self.up_float = (self.up / self.up.max()).rename("up_float")
         self.pos_neg = pd.Series([0, -0, 0.5, -0.5, 1.0, -1.0, 2.0, -2.0]).rename(
-            'pos_neg'
+            "pos_neg"
         )
 
     def test_correlation(self):
@@ -99,7 +101,7 @@ class TestScoring(unittest.TestCase):
 
     def test_one_hot_encode(self):
         assert np.isclose(
-            one_hot_encode(self.up.to_frame(), ['up']).values.T,
+            one_hot_encode(self.up.to_frame(), ["up"]).values.T,
             [
                 [1.0, 0.0, 0.0, 0.0, 0.0],
                 [0.0, 1.0, 0.0, 0.0, 0.0],
@@ -134,6 +136,35 @@ class TestScoring(unittest.TestCase):
                 [0.3797472709071261],
                 [1.4507885796854221],
             ],
+        ).all()
+
+    def test_orthoganalize(self):
+        assert np.isclose(
+            orthogonalize(self.up.to_frame().values, self.up.to_frame().values),
+            [0, 0, 0, 0, 0],
+        ).all()
+        assert np.isclose(
+            orthogonalize(self.up.to_frame().values, self.up_down.to_frame().values),
+            [[-2], [1], [0], [3], [2]],
+        ).all()
+        assert np.isclose(
+            orthogonalize(
+                self.down_up.to_frame().values, self.up_down.to_frame().values
+            ),
+            [[0], [1], [0], [1], [0]],
+        ).all()
+
+    def test_stake_weight(self):
+        assert np.isclose(
+            stake_weight(self.up.to_frame(), pd.Series([1], index=[self.up.name])),
+            self.up.values.T,
+        ).all()
+        assert np.isclose(
+            stake_weight(
+                pd.concat([self.up, self.down], axis=1),
+                pd.Series([1, 1], index=[self.up.name, self.down.name]),
+            ),
+            ((self.up + self.down) / 2).values.T,
         ).all()
 
     def test_neutralize(self):
