@@ -2,11 +2,11 @@ from setuptools import setup
 from setuptools import find_packages
 
 
-VERSION = '0.0.6'
+VERSION = "0.0.7"
 
 
 def load(path):
-    return open(path, 'r').read()
+    return open(path, "r").read()
 
 
 classifiers = [
@@ -28,14 +28,14 @@ if __name__ == "__main__":
         maintainer="Numerai",
         maintainer_email="support@numer.ai",
         description="A collection of open-source tools to help interact with Numerai, model data, and automate submissions.",
-        long_description=load('README.md'),
-        long_description_content_type='text/markdown',
-        url='https://github.com/numerai/numerai-tools',
+        long_description=load("README.md"),
+        long_description_content_type="text/markdown",
+        url="https://github.com/numerai/numerai-tools",
         platforms="OS Independent",
         classifiers=classifiers,
-        license='MIT License',
-        package_data={'numerai': ['LICENSE', 'README.md']},
-        packages=find_packages(exclude=['tests']),
+        license="MIT License",
+        package_data={"numerai": ["LICENSE", "README.md"]},
+        packages=find_packages(exclude=["tests"]),
         install_requires=[
             "pandas~=1.3.1",
             "numpy~=1.21.6",
