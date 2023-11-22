@@ -180,7 +180,8 @@ def contributive_correlation(
     1. tie-kept ranking each prediction and the meta model
     2. gaussianizing each prediction and the meta model
     3. orthogonalizing each prediction wrt the meta model
-    4. multiplying the orthogonalized predictions and the targets
+    4. dot product the orthogonalized predictions and the targets
+       then normalize by the length of the target (equivalent to covariance)
 
     Arguments:
         predictions: pd.DataFrame - the predictions to evaluate
@@ -202,6 +203,9 @@ def contributive_correlation(
 
     # orthogonalize predictions wrt meta model
     neutral_preds = orthogonalize(p, m)
+
+    # center the target, doesn't change much but good hygiene
+    live_targets -= live_targets.mean()
 
     # multiply target and neutralized predictions
     # this is equivalent to covariance b/c mean = 0
