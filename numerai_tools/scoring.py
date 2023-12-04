@@ -139,7 +139,7 @@ def orthogonalize(v: np.ndarray, u: np.ndarray) -> np.ndarray:
     then subtracting that projection from v.
 
     This will reach the same result as the neutralize
-    function when v and u are single column vectors,
+    function when v and u are centered single column vectors,
     but this is much faster.
 
     Arguments:
@@ -168,13 +168,13 @@ def stake_weight(
     return (predictions[stakes.index] * stakes).sum(axis=1) / stakes.sum()
 
 
-def contributive_correlation(
+def correlation_contribution(
     predictions: pd.DataFrame,
     meta_model: pd.Series,
     live_targets: pd.Series,
 ) -> pd.Series:
-    """Calculate the contributive correlation of the given predictions
-    wrt the given meta model.
+    """Calculate how much the given predictions contribute to the
+    given Meta Model's correlation with the target.
 
     Then calculate contributive correlation by:
     1. tie-kept ranking each prediction and the meta model
@@ -182,6 +182,13 @@ def contributive_correlation(
     3. orthogonalizing each prediction wrt the meta model
     4. dot product the orthogonalized predictions and the targets
        then normalize by the length of the target (equivalent to covariance)
+
+    This is 100% correlated with the following formula:
+    pearson_corr(
+        live_targets, 0.999 * meta_model + 0.001 * predictions
+    ) - pearson_corr(
+        live_targets, meta_model
+    )
 
     Arguments:
         predictions: pd.DataFrame - the predictions to evaluate
@@ -204,8 +211,11 @@ def contributive_correlation(
     # orthogonalize predictions wrt meta model
     neutral_preds = orthogonalize(p, m)
 
-    # center the target, doesn't change much but good hygiene
-    live_targets -= live_targets.mean()
+    # convert target to buckets [-2, -1, 0, 1, 2]
+    if np.isclose(live_targets.mean(), 0):
+        live_targets -= live_targets.mean()
+    if (live_targets >= 0).all() and (live_targets <= 1).all():
+        live_targets = (live_targets * 4) - 2
 
     # multiply target and neutralized predictions
     # this is equivalent to covariance b/c mean = 0
