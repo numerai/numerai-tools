@@ -66,6 +66,11 @@ def variance_normalize(df: pd.DataFrame) -> pd.DataFrame:
     return df / np.std(df, axis=0)
 
 
+def standardize(df: pd.DataFrame) -> pd.DataFrame:
+    # scale a df such that all columns have mean == 0 and std == 1.
+    return (df - df.mean()) / np.std(df, axis=0)
+
+
 def validate_indices(live_targets: pd.Series, predictions: pd.Series) -> None:
     # ensure the ids are equivalent and sorted
     assert np.array_equal(predictions.index, live_targets.index.sort_values())
@@ -202,7 +207,6 @@ def correlation_contribution(
     # filter and sort preds, mm, and targets wrt each other
     meta_model, predictions = filter_sort_index(meta_model, predictions)
     live_targets, predictions = filter_sort_index(live_targets, predictions)
-    live_targets, meta_model = filter_sort_index(live_targets, meta_model)
 
     # rank and normalize meta model and predictions so mean=0 and std=1
     p = gaussian(tie_kept_rank(predictions)).values
@@ -212,7 +216,7 @@ def correlation_contribution(
     neutral_preds = orthogonalize(p, m)
 
     # convert target to buckets [-2, -1, 0, 1, 2]
-    if np.isclose(live_targets.mean(), 0):
+    if not np.isclose(live_targets.mean(), 0):
         live_targets -= live_targets.mean()
     if (live_targets >= 0).all() and (live_targets <= 1).all():
         live_targets = (live_targets * 4) - 2
