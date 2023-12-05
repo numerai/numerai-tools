@@ -216,10 +216,9 @@ def correlation_contribution(
     neutral_preds = orthogonalize(p, m)
 
     # convert target to buckets [-2, -1, 0, 1, 2]
-    if not np.isclose(live_targets.mean(), 0):
-        live_targets -= live_targets.mean()
     if (live_targets >= 0).all() and (live_targets <= 1).all():
-        live_targets = (live_targets * 4) - 2
+        live_targets = live_targets * 4
+    live_targets -= live_targets.mean()
 
     # multiply target and neutralized predictions
     # this is equivalent to covariance b/c mean = 0
