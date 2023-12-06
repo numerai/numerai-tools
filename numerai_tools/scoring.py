@@ -28,6 +28,13 @@ def filter_sort_index(
     return s1.loc[ids].sort_index(), s2.loc[ids].sort_index()
 
 
+def filter_top_bottom(s: pd.Series, top_bottom: int):
+    # filters the given series to only the top n and bottom n values
+    tb_idx = np.argsort(s)
+    tb_idx = np.concatenate([tb_idx[:top_bottom], tb_idx[-top_bottom:]])
+    return s.iloc[tb_idx, :]
+
+
 def rank(df: pd.DataFrame, method: str = "average") -> pd.DataFrame:
     """Percentile rank each column of a pandas DataFrame, centering values around 0.5
 
@@ -87,24 +94,30 @@ def correlation(live_targets: pd.Series, predictions: pd.Series) -> float:
     return np.corrcoef(live_targets, predictions)[0, 1]
 
 
-def tie_broken_rank_correlation(
-    live_targets: pd.Series, predictions: pd.Series
-) -> float:
-    # percentile rank the predictions and get the correlation with live_targets
+def tie_broken_rank_correlation(target: pd.Series, predictions: pd.Series) -> float:
+    # percentile rank the predictions and get the correlation with the target
     ranked_predictions = tie_broken_rank(predictions.to_frame())[predictions.name]
-    return correlation(live_targets, ranked_predictions)
+    return correlation(target, ranked_predictions)
 
 
-def spearman_correlation(live_targets: pd.Series, predictions: pd.Series) -> float:
-    validate_indices(live_targets, predictions)
-    # calculate corr
-    return live_targets.corr(predictions, method="spearman")
+def spearman_correlation(target: pd.Series, predictions: pd.Series) -> float:
+    validate_indices(target, predictions)
+    return target.corr(predictions, method="spearman")
 
 
-def pearson_correlation(live_targets: pd.Series, predictions: pd.Series) -> float:
-    validate_indices(live_targets, predictions)
-    # calculate corr
-    return live_targets.corr(predictions, method="pearson")
+def pearson_correlation(
+    target: pd.Series, predictions: pd.Series, top_bottom: Optional[int] = None
+) -> float:
+    if top_bottom is not None and top_bottom > 0:
+        predictions = filter_top_bottom(predictions, top_bottom)
+        target, predictions = filter_sort_index(target, predictions)
+    validate_indices(target, predictions)
+    return target.corr(predictions, method="pearson")
+
+
+def sharpe_ratio(s: pd.Series) -> float:
+    # calculate the sharpe ratio of a series
+    return np.mean(s) / np.std(s)
 
 
 def power(df: pd.DataFrame, p: float) -> pd.DataFrame:
@@ -177,6 +190,7 @@ def correlation_contribution(
     predictions: pd.DataFrame,
     meta_model: pd.Series,
     live_targets: pd.Series,
+    top_bottom: Optional[int] = None,
 ) -> pd.Series:
     """Calculate how much the given predictions contribute to the
     given Meta Model's correlation with the target.
@@ -219,6 +233,10 @@ def correlation_contribution(
     if (live_targets >= 0).all() and (live_targets <= 1).all():
         live_targets = live_targets * 4
     live_targets -= live_targets.mean()
+
+    if top_bottom is not None and top_bottom > 0:
+        neutral_preds = filter_top_bottom(neutral_preds, top_bottom)
+        neutral_preds, live_targets = filter_sort_index(neutral_preds, live_targets)
 
     # multiply target and neutralized predictions
     # this is equivalent to covariance b/c mean = 0
@@ -324,6 +342,7 @@ def numerai_corr(
     predictions: pd.DataFrame,
     targets: pd.Series,
     max_filtered_index_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
+    top_bottom: Optional[int] = None,
 ) -> pd.Series:
     """Calculates the canonical Numerai correlation.
     1. Re-center the target on 0
@@ -355,6 +374,7 @@ def feature_neutral_corr(
     predictions: pd.DataFrame,
     features: pd.DataFrame,
     targets: pd.Series,
+    top_bottom: Optional[int] = None,
 ):
     """Calculates the canonical Numerai feature-neutral correlation.
     1. neutralize predictions relative to the features
@@ -364,6 +384,8 @@ def feature_neutral_corr(
         predictions: pd.DataFrame - the predictions to evaluate
         features: pd.DataFrame - the features to neutralize the predictions against
         targets: pd.Series - the live targets to evaluate against
+        top_bottom: Optional[int] - the number of top and bottom predictions to use
+                                    when calculating the correlation
 
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
@@ -371,4 +393,28 @@ def feature_neutral_corr(
     neutral_preds = tie_kept_rank__gaussianize__neutralize__variance_normalize(
         predictions, features
     )
-    return numerai_corr(neutral_preds, targets)
+    return numerai_corr(neutral_preds, targets, top_bottom=top_bottom)
+
+
+def max_feature_correlation(
+    s: pd.Series,
+    features: pd.DataFrame,
+    top_bottom: Optional[int] = None,
+) -> Tuple[str, float]:
+    """Calculates the maximum correlation between the given series and each feature
+    and returns the name of the feature and the correlation with that feature.
+
+    Arguments:
+        s: pd.Series - the series to calculate correlations against
+        features: pd.DataFrame - the features to calculate correlations against
+
+    Returns:
+        Tuple[str, float] - the name of the feature with the highest correlation
+                            and the correlation with that feature
+    """
+    feature_correlations = features.apply(
+        lambda f: pearson_correlation(f, s, top_bottom)
+    )
+    max_feature = feature_correlations.idxmax()
+    max_corr = feature_correlations[max_feature]
+    return max_feature, max_corr
