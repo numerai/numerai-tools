@@ -28,7 +28,7 @@ def filter_sort_index(
     return s1.loc[ids].sort_index(), s2.loc[ids].sort_index()
 
 
-def filter_top_bottom(s: np.ndarray, top_bottom: int):
+def filter_top_bottom(s: pd.Series, top_bottom: int):
     # filters the given series to only the top n and bottom n values
     tb_idx = np.argsort(s)
     tb_idx = np.concatenate([tb_idx[:top_bottom], tb_idx[-top_bottom:]])
@@ -111,7 +111,7 @@ def pearson_correlation(
     if top_bottom is not None and top_bottom > 0:
         predictions = filter_top_bottom(predictions, top_bottom)
         target, predictions = filter_sort_index(
-            target, predictions, max_filtered_ratio=(1 - top_bottom / len(target))
+            target, predictions, (1 - top_bottom / len(target))
         )
     validate_indices(target, predictions)
     return target.corr(predictions, method="pearson")
