@@ -308,7 +308,7 @@ def one_hot_encode(
         one_hot = encoder.fit_transform(df[[col]])
         one_hot = pd.DataFrame(
             one_hot.toarray(),
-            columns=encoder.get_feature_names(),
+            columns=encoder.get_feature_names_out(),
             index=df.index,
         )
         df = df.join(one_hot).drop(columns=col)
