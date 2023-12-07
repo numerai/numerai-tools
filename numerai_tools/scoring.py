@@ -32,7 +32,7 @@ def filter_top_bottom(s: pd.Series, top_bottom: int):
     # filters the given series to only the top n and bottom n values
     tb_idx = np.argsort(s)
     tb_idx = np.concatenate([tb_idx[:top_bottom], tb_idx[-top_bottom:]])
-    return s.iloc[tb_idx, :]
+    return s.iloc[tb_idx]
 
 
 def rank(df: pd.DataFrame, method: str = "average") -> pd.DataFrame:
@@ -110,7 +110,9 @@ def pearson_correlation(
 ) -> float:
     if top_bottom is not None and top_bottom > 0:
         predictions = filter_top_bottom(predictions, top_bottom)
-        target, predictions = filter_sort_index(target, predictions)
+        target, predictions = filter_sort_index(
+            target, predictions, (1 - top_bottom / len(target))
+        )
     validate_indices(target, predictions)
     return target.corr(predictions, method="pearson")
 
@@ -235,8 +237,14 @@ def correlation_contribution(
     live_targets -= live_targets.mean()
 
     if top_bottom is not None and top_bottom > 0:
+        neutral_preds = pd.Series(neutral_preds.T[0], index=live_targets.index)
         neutral_preds = filter_top_bottom(neutral_preds, top_bottom)
-        neutral_preds, live_targets = filter_sort_index(neutral_preds, live_targets)
+        neutral_preds, live_targets = filter_sort_index(
+            neutral_preds,
+            live_targets,
+            (1 - top_bottom / len(live_targets)),
+        )
+        neutral_preds = neutral_preds.to_frame().values
 
     # multiply target and neutralized predictions
     # this is equivalent to covariance b/c mean = 0
