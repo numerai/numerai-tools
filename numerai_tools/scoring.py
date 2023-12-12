@@ -427,8 +427,9 @@ def max_feature_correlation(
                             and the correlation with that feature
     """
     feature_correlations = features.apply(
-        lambda f: np.abs(pearson_correlation(f, s, top_bottom))
+        lambda f: pearson_correlation(f, s, top_bottom)
     )
+    feature_correlations = np.abs(feature_correlations)
     max_feature = feature_correlations.idxmax()
     max_corr = feature_correlations[max_feature]
     return max_feature, max_corr
