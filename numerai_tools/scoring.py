@@ -369,9 +369,15 @@ def numerai_corr(
         pd.Series - the resulting correlation scores for each column in predictions
     """
     targets -= targets.mean()
-    targets, predictions = filter_sort_index(
-        targets, predictions, max_filtered_index_ratio
-    )
+    if top_bottom is not None and top_bottom > 0:
+        predictions = filter_top_bottom(predictions, top_bottom)
+        targets, predictions = filter_sort_index(
+            targets, predictions, (1 - top_bottom / len(targets))
+        )
+    else:
+        targets, predictions = filter_sort_index(
+            targets, predictions, max_filtered_index_ratio
+        )
     predictions = tie_kept_rank__gaussianize__pow_1_5(predictions)
     targets = power(targets.to_frame(), 1.5)[targets.name]
     scores = predictions.apply(lambda sub: pearson_correlation(targets, sub))
@@ -423,6 +429,7 @@ def max_feature_correlation(
     feature_correlations = features.apply(
         lambda f: pearson_correlation(f, s, top_bottom)
     )
+    feature_correlations = np.abs(feature_correlations)
     max_feature = feature_correlations.idxmax()
     max_corr = feature_correlations[max_feature]
     return max_feature, max_corr
