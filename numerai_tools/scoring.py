@@ -374,7 +374,9 @@ def numerai_corr(
     )
     predictions = tie_kept_rank__gaussianize__pow_1_5(predictions)
     targets = power(targets.to_frame(), 1.5)[targets.name]
-    scores = predictions.apply(lambda sub: pearson_correlation(targets, sub))
+    scores = predictions.apply(
+        lambda sub: pearson_correlation(targets, sub, top_bottom)
+    )
     return scores
 
 
@@ -423,6 +425,7 @@ def max_feature_correlation(
     feature_correlations = features.apply(
         lambda f: pearson_correlation(f, s, top_bottom)
     )
+    feature_correlations = np.abs(feature_correlations)
     max_feature = feature_correlations.idxmax()
     max_corr = feature_correlations[max_feature]
     return max_feature, max_corr
