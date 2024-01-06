@@ -14,7 +14,7 @@ DEFAULT_MAX_FILTERED_INDEX_RATIO = 0.2
 
 
 # this is primarily used b/c round 326 had too many stocks,
-# so we need to filter out the unnecessary ids here just in case
+# so we need to filter out the unnecessary ids here just in case.
 # it's also just convenient way to ensure everything is sorted/matching
 def filter_sort_index(
     s1: Union[pd.DataFrame, pd.Series],
@@ -237,18 +237,34 @@ def correlation_contribution(
     live_targets -= live_targets.mean()
 
     if top_bottom is not None and top_bottom > 0:
-        neutral_preds = pd.Series(neutral_preds.T[0], index=live_targets.index)
-        neutral_preds = filter_top_bottom(neutral_preds, top_bottom)
-        neutral_preds, live_targets = filter_sort_index(
-            neutral_preds,
-            live_targets,
-            (1 - top_bottom / len(live_targets)),
+        neutral_preds = pd.DataFrame(
+            neutral_preds, columns=predictions.columns, index=predictions.index
         )
-        neutral_preds = neutral_preds.to_frame().values
+        # filter each columns top and bottom n predictions
+        neutral_preds = neutral_preds.apply(lambda p: filter_top_bottom(p, top_bottom))
+        # create a dataframe for targets to match the filtered predictions
+        live_targets = (
+            neutral_preds.apply(
+                lambda p: filter_sort_index(
+                    p,
+                    live_targets,
+                    (1 - top_bottom / len(live_targets)),
+                )[1]
+            )
+            .fillna(0)
+            .T.values
+        )
+        # fillna with 0 so we don't get NaNs in the dot product
+        neutral_preds = neutral_preds.fillna(0).values
 
     # multiply target and neutralized predictions
     # this is equivalent to covariance b/c mean = 0
-    mmc = (live_targets @ neutral_preds) / len(live_targets)
+    mmc = live_targets @ neutral_preds
+    if top_bottom is not None and top_bottom > 0:
+        # take the diagonal of the covariance matrix
+        mmc = np.diag(mmc)
+    # cannot use /= because np.diag returns a read-only array
+    mmc = mmc / len(live_targets)
 
     return pd.Series(mmc, index=predictions.columns)
 
