@@ -21,6 +21,17 @@ def filter_sort_index(
     s2: Union[pd.DataFrame, pd.Series],
     max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Filters the indices of the given series to match each other,
+    then sorts the indices, then checks that we didn't filter too many indices
+    before returning the filtered and sorted series.
+
+    Arguments:
+        s1: Union[pd.DataFrame, pd.Series] - the first dataset to filter and sort
+        s2: Union[pd.DataFrame, pd.Series] - the second dataset to filter and sort
+
+    Returns:
+        Tuple[pd.DataFrame, pd.DataFrame] - the filtered and sorted datasets
+    """
     ids = s1.dropna().index.intersection(s2.dropna().index)
     # ensure we didn't filter too many ids
     assert len(ids) / len(s1) >= (1 - max_filtered_ratio)
@@ -28,11 +39,20 @@ def filter_sort_index(
     return s1.loc[ids].sort_index(), s2.loc[ids].sort_index()
 
 
-def filter_top_bottom(s: pd.Series, top_bottom: int):
-    # filters the given series to only the top n and bottom n values
+def filter_sort_top_bottom(s: pd.Series, top_bottom: int):
+    """Filters the series according to the top n and bottom n values
+    then sorts the index and returns the filtered and sorted series.
+
+    Arguments:
+        s: pd.Series - the data to filter and sort
+        top_bottom: int - the number of top n and bottom n values to keep
+
+    Returns:
+        pd.Series - the filtered and sorted data
+    """
     tb_idx = np.argsort(s)
     tb_idx = np.concatenate([tb_idx[:top_bottom], tb_idx[-top_bottom:]])
-    return s.iloc[tb_idx]
+    return s.iloc[tb_idx].sort_index()
 
 
 def rank(df: pd.DataFrame, method: str = "average") -> pd.DataFrame:
@@ -109,7 +129,7 @@ def pearson_correlation(
     target: pd.Series, predictions: pd.Series, top_bottom: Optional[int] = None
 ) -> float:
     if top_bottom is not None and top_bottom > 0:
-        predictions = filter_top_bottom(predictions, top_bottom)
+        predictions = filter_sort_top_bottom(predictions, top_bottom)
         target, predictions = filter_sort_index(
             target, predictions, (1 - top_bottom / len(target))
         )
@@ -237,11 +257,10 @@ def correlation_contribution(
     live_targets -= live_targets.mean()
 
     if top_bottom is not None and top_bottom > 0:
+        # filter each column to its top and bottom n predictions
         neutral_preds = pd.DataFrame(
             neutral_preds, columns=predictions.columns, index=predictions.index
-        )
-        # filter each columns top and bottom n predictions
-        neutral_preds = neutral_preds.apply(lambda p: filter_top_bottom(p, top_bottom))
+        ).apply(lambda p: filter_sort_top_bottom(p, top_bottom))
         # create a dataframe for targets to match the filtered predictions
         live_targets = (
             neutral_preds.apply(
@@ -261,10 +280,10 @@ def correlation_contribution(
     # this is equivalent to covariance b/c mean = 0
     mmc = live_targets @ neutral_preds
     if top_bottom is not None and top_bottom > 0:
-        # take the diagonal of the covariance matrix
-        mmc = np.diag(mmc)
-    # cannot use /= because np.diag returns a read-only array
-    mmc = mmc / len(live_targets)
+        # only the diagonal is the proper score
+        mmc = np.diag(mmc) / (top_bottom * 2)
+    else:
+        mmc /= len(live_targets)
 
     return pd.Series(mmc, index=predictions.columns)
 
