@@ -14,13 +14,24 @@ DEFAULT_MAX_FILTERED_INDEX_RATIO = 0.2
 
 
 # this is primarily used b/c round 326 had too many stocks,
-# so we need to filter out the unnecessary ids here just in case
+# so we need to filter out the unnecessary ids here just in case.
 # it's also just convenient way to ensure everything is sorted/matching
 def filter_sort_index(
     s1: Union[pd.DataFrame, pd.Series],
     s2: Union[pd.DataFrame, pd.Series],
     max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Filters the indices of the given series to match each other,
+    then sorts the indices, then checks that we didn't filter too many indices
+    before returning the filtered and sorted series.
+
+    Arguments:
+        s1: Union[pd.DataFrame, pd.Series] - the first dataset to filter and sort
+        s2: Union[pd.DataFrame, pd.Series] - the second dataset to filter and sort
+
+    Returns:
+        Tuple[pd.DataFrame, pd.DataFrame] - the filtered and sorted datasets
+    """
     ids = s1.dropna().index.intersection(s2.dropna().index)
     # ensure we didn't filter too many ids
     assert len(ids) / len(s1) >= (1 - max_filtered_ratio)
@@ -28,11 +39,20 @@ def filter_sort_index(
     return s1.loc[ids].sort_index(), s2.loc[ids].sort_index()
 
 
-def filter_top_bottom(s: pd.Series, top_bottom: int):
-    # filters the given series to only the top n and bottom n values
+def filter_sort_top_bottom(s: pd.Series, top_bottom: int):
+    """Filters the series according to the top n and bottom n values
+    then sorts the index and returns the filtered and sorted series.
+
+    Arguments:
+        s: pd.Series - the data to filter and sort
+        top_bottom: int - the number of top n and bottom n values to keep
+
+    Returns:
+        pd.Series - the filtered and sorted data
+    """
     tb_idx = np.argsort(s)
     tb_idx = np.concatenate([tb_idx[:top_bottom], tb_idx[-top_bottom:]])
-    return s.iloc[tb_idx]
+    return s.iloc[tb_idx].sort_index()
 
 
 def rank(df: pd.DataFrame, method: str = "average") -> pd.DataFrame:
@@ -109,7 +129,7 @@ def pearson_correlation(
     target: pd.Series, predictions: pd.Series, top_bottom: Optional[int] = None
 ) -> float:
     if top_bottom is not None and top_bottom > 0:
-        predictions = filter_top_bottom(predictions, top_bottom)
+        predictions = filter_sort_top_bottom(predictions, top_bottom)
         target, predictions = filter_sort_index(
             target, predictions, (1 - top_bottom / len(target))
         )
@@ -237,18 +257,33 @@ def correlation_contribution(
     live_targets -= live_targets.mean()
 
     if top_bottom is not None and top_bottom > 0:
-        neutral_preds = pd.Series(neutral_preds.T[0], index=live_targets.index)
-        neutral_preds = filter_top_bottom(neutral_preds, top_bottom)
-        neutral_preds, live_targets = filter_sort_index(
-            neutral_preds,
-            live_targets,
-            (1 - top_bottom / len(live_targets)),
+        # filter each column to its top and bottom n predictions
+        neutral_preds = pd.DataFrame(
+            neutral_preds, columns=predictions.columns, index=predictions.index
+        ).apply(lambda p: filter_sort_top_bottom(p, top_bottom))
+        # create a dataframe for targets to match the filtered predictions
+        live_targets = (
+            neutral_preds.apply(
+                lambda p: filter_sort_index(
+                    p,
+                    live_targets,
+                    (1 - top_bottom / len(live_targets)),
+                )[1]
+            )
+            .fillna(0)
+            .T.values
         )
-        neutral_preds = neutral_preds.to_frame().values
+        # fillna with 0 so we don't get NaNs in the dot product
+        neutral_preds = neutral_preds.fillna(0).values
 
     # multiply target and neutralized predictions
     # this is equivalent to covariance b/c mean = 0
-    mmc = (live_targets @ neutral_preds) / len(live_targets)
+    mmc = live_targets @ neutral_preds
+    if top_bottom is not None and top_bottom > 0:
+        # only the diagonal is the proper score
+        mmc = np.diag(mmc) / (top_bottom * 2)
+    else:
+        mmc /= len(live_targets)
 
     return pd.Series(mmc, index=predictions.columns)
 
