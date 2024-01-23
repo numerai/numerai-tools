@@ -403,7 +403,7 @@ def numerai_corr(
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
     """
-    targets -= targets.mean()
+    targets = targets - targets.mean()
     targets, predictions = filter_sort_index(
         targets, predictions, max_filtered_index_ratio
     )

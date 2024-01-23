@@ -5,6 +5,7 @@ import pandas as pd
 
 from numerai_tools.scoring import (
     correlation,
+    numerai_corr,
     tie_broken_rank_correlation,
     spearman_correlation,
     pearson_correlation,
@@ -198,3 +199,12 @@ class TestScoring(unittest.TestCase):
                 [0, 0, 0, 0, 0],
             ],
         ).all()
+
+    def test_numerai_corr_doesnt_clobber_targets(self):
+        s = [x/4 for x in range(5)]
+        df = pd.DataFrame({
+            "target": s,
+            "prediction": reversed(s)
+        })
+        numerai_corr(df[["prediction"]], df["target"])
+        assert pd.Series(s).equals(df["target"]), f"{s} != {list(df['target'].values)}"
