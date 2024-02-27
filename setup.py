@@ -1,7 +1,7 @@
 from setuptools import setup
 from setuptools import find_packages
 
-VERSION = "0.0.19"
+VERSION = "0.0.20"
 
 
 def load(path):
@@ -39,6 +39,6 @@ if __name__ == "__main__":
             "pandas>=1.3.1, <=2.1.3",
             "numpy~=1.26.2",
             "scipy~=1.11.4",
-            "scikit-learn>=1.3.0, <=1.3.2",
+            "scikit-learn>=1.3.0",
         ],
     )
