@@ -39,6 +39,6 @@ if __name__ == "__main__":
             "pandas>=1.3.1, <=2.1.3",
             "numpy~=1.26.2",
             "scipy~=1.11.4",
-            "scikit-learn>=1.3.0, <=1.3.2",
+            "scikit-learn>=1.3.0",
         ],
     )
