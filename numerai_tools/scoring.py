@@ -1,3 +1,4 @@
+import functools
 from typing import List, Tuple, Union, Optional
 
 import numpy as np
@@ -176,7 +177,7 @@ def gaussian(df: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame - the gaussianized data
     """
     assert np.array_equal(df.index.sort_values(), df.index)
-    return df.apply(lambda series: norm.ppf(series))
+    return df.apply(functools.partial(norm.ppf, loc=0, scale=1))
 
 
 def orthogonalize(v: np.ndarray, u: np.ndarray) -> np.ndarray:
