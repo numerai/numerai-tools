@@ -243,6 +243,7 @@ def correlation_contribution(
     # filter and sort preds, mm, and targets wrt each other
     meta_model, predictions = filter_sort_index(meta_model, predictions)
     live_targets, predictions = filter_sort_index(live_targets, predictions)
+    live_targets, meta_model = filter_sort_index(live_targets, meta_model)
 
     # rank and normalize meta model and predictions so mean=0 and std=1
     p = gaussian(tie_kept_rank(predictions)).values
