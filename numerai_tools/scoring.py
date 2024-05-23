@@ -1,3 +1,4 @@
+import os
 import functools
 from typing import List, Tuple, Union, Optional
 
@@ -5,6 +6,8 @@ import numpy as np
 import pandas as pd
 
 try:
+    if os.environ.get("DISABLE_NUMBA_STATS"):
+        raise ImportError
     from numba_stats import norm
 except ImportError:
     from scipy.stats import norm
