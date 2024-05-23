@@ -41,4 +41,7 @@ if __name__ == "__main__":
             "scipy~=1.11.4",
             "scikit-learn>=1.3.0",
         ],
+        extras_require={
+            "dev": ["numba-stats>=1.7.0"]
+        },
     )
