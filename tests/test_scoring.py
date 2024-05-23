@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,9 @@ from numerai_tools.scoring import (
     stake_weight,
 )
 
+from numba_stats import norm as numba_stats_norm
+from scipy.stats import norm as scipy_stats_norm
+
 
 class TestScoring(unittest.TestCase):
     def setUp(self):
@@ -34,6 +38,11 @@ class TestScoring(unittest.TestCase):
         self.pos_neg = pd.Series([0, -0, 0.5, -0.5, 1.0, -1.0, 2.0, -2.0]).rename(
             "pos_neg"
         )
+        self.s = [x/4 for x in range(5)]
+        self.df = pd.DataFrame({
+            "target": self.s,
+            "prediction": reversed(self.s)
+        })
 
     def test_correlation(self):
         assert np.isclose(correlation(self.up, self.up), 1)
@@ -201,10 +210,14 @@ class TestScoring(unittest.TestCase):
         ).all()
 
     def test_numerai_corr_doesnt_clobber_targets(self):
-        s = [x/4 for x in range(5)]
-        df = pd.DataFrame({
-            "target": s,
-            "prediction": reversed(s)
-        })
-        numerai_corr(df[["prediction"]], df["target"])
-        assert pd.Series(s).equals(df["target"]), f"{s} != {list(df['target'].values)}"
+        numerai_corr(self.df[["prediction"]], self.df["target"])
+        assert pd.Series(self.s).equals(self.df["target"]), \
+                f"{self.s} != {list(self.df['target'].values)}"
+
+    def test_numerai_corr_is_same_with_scipy_and_numba(self):
+        with patch("numerai_tools.scoring.norm", new=scipy_stats_norm):
+            corr1 = numerai_corr(
+                    self.df[["prediction"]], self.df["target"])
+        with patch("numerai_tools.scoring.norm", new=numba_stats_norm):
+            corr2 = numerai_corr(self.df[["prediction"]], self.df["target"])
+        assert np.isclose(corr1, corr2)

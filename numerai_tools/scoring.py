@@ -1,8 +1,17 @@
+import os
+import functools
 from typing import List, Tuple, Union, Optional
 
 import numpy as np
 import pandas as pd
-from scipy import stats
+
+try:
+    if os.environ.get("DISABLE_NUMBA_STATS"):
+        raise ImportError
+    from numba_stats import norm
+except ImportError:
+    from scipy.stats import norm
+
 from sklearn.preprocessing import OneHotEncoder
 
 
@@ -171,7 +180,7 @@ def gaussian(df: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame - the gaussianized data
     """
     assert np.array_equal(df.index.sort_values(), df.index)
-    return df.apply(lambda series: stats.norm.ppf(series))
+    return df.apply(functools.partial(norm.ppf, loc=0, scale=1))
 
 
 def orthogonalize(v: np.ndarray, u: np.ndarray) -> np.ndarray:
