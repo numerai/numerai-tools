@@ -27,7 +27,8 @@ def clean_predictions(
     then optionally ranks (keeping ties) and fills NaNs with 0.5.
 
     This function is used in Numerai to clean submissions for use in the
-    Meta Model and scoring. We only rank and fill for Signals.
+    Meta Model and scoring. We only rank and fill in preparation for scoring
+    Signals and Crypto submissions.
 
     Arguments:
         live_ids: pd.Series - the ids in the live data
