@@ -30,8 +30,14 @@ def filter_sort_index(
     """
     ids = s1.dropna().index.intersection(s2.dropna().index)
     # ensure we didn't filter too many ids
-    assert len(ids) / len(s1) >= (1 - max_filtered_ratio)
-    assert len(ids) / len(s2) >= (1 - max_filtered_ratio)
+    assert len(ids) / len(s1) >= (1 - max_filtered_ratio), (
+        "s1 does not have enough overlapping ids with s2,"
+        f" must have >= {round(1-max_filtered_ratio,2)*100}% overlapping ids"
+    )
+    assert len(ids) / len(s2) >= (1 - max_filtered_ratio), (
+        "s2 does not have enough overlapping ids with s1,"
+        f" must have >= {round(1-max_filtered_ratio,2)*100}% overlapping ids"
+    )
     return s1.loc[ids].sort_index(), s2.loc[ids].sort_index()
 
 
@@ -52,7 +58,7 @@ def filter_sort_top_bottom(
     top = s.iloc[tb_idx[:top_bottom]]
     bot = s.iloc[tb_idx[-top_bottom:]]
     if return_concatenated:
-        return np.concatenate([top, bot]).sort_index()
+        return pd.concat([top, bot]).sort_index()
     else:
         return top.sort_index(), bot.sort_index()
 

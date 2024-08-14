@@ -19,6 +19,7 @@ from numerai_tools.scoring import (
     variance_normalize,
     orthogonalize,
     stake_weight,
+    filter_sort_top_bottom,
 )
 
 
@@ -201,10 +202,28 @@ class TestScoring(unittest.TestCase):
         ).all()
 
     def test_numerai_corr_doesnt_clobber_targets(self):
-        s = [x/4 for x in range(5)]
-        df = pd.DataFrame({
-            "target": s,
-            "prediction": reversed(s)
-        })
+        s = [x / 4 for x in range(5)]
+        df = pd.DataFrame({"target": s, "prediction": reversed(s)})
         numerai_corr(df[["prediction"]], df["target"])
         assert pd.Series(s).equals(df["target"]), f"{s} != {list(df['target'].values)}"
+
+    def test_filter_top_bottom(self):
+        assert np.isclose(
+            filter_sort_top_bottom(self.up, top_bottom=2).values.T, [0, 1, 3, 4]
+        ).all()
+        assert np.isclose(
+            (
+                filter_sort_top_bottom(
+                    self.up, top_bottom=2, return_concatenated=False
+                )[0].values.T
+            ),
+            [0, 1],
+        ).all()
+        assert np.isclose(
+            (
+                filter_sort_top_bottom(
+                    self.up, top_bottom=2, return_concatenated=False
+                )[1].values.T
+            ),
+            [3, 4],
+        ).all()
