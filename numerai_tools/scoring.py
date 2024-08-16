@@ -7,15 +7,11 @@ from sklearn.preprocessing import OneHotEncoder
 
 
 # sometimes when we match up the target/prediction indices,
-# changes in Numerai data generation can cause some stocks to get filtered out
-# (e.g. when there are a lot of NaNs in the target),
+# changes in stock universe causes some stocks to enter / leave,
 # this ensures we don't filter too much
 DEFAULT_MAX_FILTERED_INDEX_RATIO = 0.2
 
 
-# this is primarily used b/c round 326 had too many stocks,
-# so we need to filter out the unnecessary ids here just in case.
-# it's also just convenient way to ensure everything is sorted/matching
 def filter_sort_index(
     s1: Union[pd.DataFrame, pd.Series],
     s2: Union[pd.DataFrame, pd.Series],
@@ -34,12 +30,20 @@ def filter_sort_index(
     """
     ids = s1.dropna().index.intersection(s2.dropna().index)
     # ensure we didn't filter too many ids
-    assert len(ids) / len(s1) >= (1 - max_filtered_ratio)
-    assert len(ids) / len(s2) >= (1 - max_filtered_ratio)
+    assert len(ids) / len(s1) >= (1 - max_filtered_ratio), (
+        "s1 does not have enough overlapping ids with s2,"
+        f" must have >= {round(1-max_filtered_ratio,2)*100}% overlapping ids"
+    )
+    assert len(ids) / len(s2) >= (1 - max_filtered_ratio), (
+        "s2 does not have enough overlapping ids with s1,"
+        f" must have >= {round(1-max_filtered_ratio,2)*100}% overlapping ids"
+    )
     return s1.loc[ids].sort_index(), s2.loc[ids].sort_index()
 
 
-def filter_sort_top_bottom(s: pd.Series, top_bottom: int):
+def filter_sort_top_bottom(
+    s: pd.Series, top_bottom: int, return_concatenated: bool = True
+):
     """Filters the series according to the top n and bottom n values
     then sorts the index and returns the filtered and sorted series.
 
@@ -51,8 +55,12 @@ def filter_sort_top_bottom(s: pd.Series, top_bottom: int):
         pd.Series - the filtered and sorted data
     """
     tb_idx = np.argsort(s)
-    tb_idx = np.concatenate([tb_idx[:top_bottom], tb_idx[-top_bottom:]])
-    return s.iloc[tb_idx].sort_index()
+    top = s.iloc[tb_idx[:top_bottom]]
+    bot = s.iloc[tb_idx[-top_bottom:]]
+    if return_concatenated:
+        return pd.concat([top, bot]).sort_index()
+    else:
+        return top.sort_index(), bot.sort_index()
 
 
 def rank(df: pd.DataFrame, method: str = "average") -> pd.DataFrame:
@@ -235,6 +243,9 @@ def correlation_contribution(
         predictions: pd.DataFrame - the predictions to evaluate
         meta_model: pd.Series - the meta model to evaluate against
         live_targets: pd.Series - the live targets to evaluate against
+        top_bottom: Optional[int] - the number of top and bottom predictions to use
+                                    when calculating the correlation. Results in
+                                    2*top_bottom predictions.
 
     Returns:
         pd.Series - the resulting contributive correlation
@@ -400,6 +411,9 @@ def numerai_corr(
         targets: pd.Series - the live targets to evaluate against
         max_filtered_index_ratio: float - the maximum ratio of indices that can be dropped
                                           when matching up the targets and predictions
+        top_bottom: Optional[int] - the number of top and bottom predictions to use
+                                    when calculating the correlation. Results in
+                                    2*top_bottom predictions.
 
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
@@ -431,7 +445,8 @@ def feature_neutral_corr(
         features: pd.DataFrame - the features to neutralize the predictions against
         targets: pd.Series - the live targets to evaluate against
         top_bottom: Optional[int] - the number of top and bottom predictions to use
-                                    when calculating the correlation
+                                    when calculating the correlation. Results in
+                                    2*top_bottom predictions.
 
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
@@ -453,6 +468,9 @@ def max_feature_correlation(
     Arguments:
         s: pd.Series - the series to calculate correlations against
         features: pd.DataFrame - the features to calculate correlations against
+        top_bottom: Optional[int] - the number of top and bottom predictions to use
+                                    when calculating the correlation. Results in
+                                    2*top_bottom predictions.
 
     Returns:
         Tuple[str, float] - the name of the feature with the highest correlation

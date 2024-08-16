@@ -1,7 +1,7 @@
 from setuptools import setup
 from setuptools import find_packages
 
-VERSION = "0.0.20"
+VERSION = "0.1.0"
 
 
 def load(path):
