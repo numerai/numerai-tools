@@ -45,7 +45,7 @@ def clean_predictions(
         # drop duplicate ids (keep first)
         .drop_duplicates(subset=id_col, keep='first')
         # set ids as index
-        .set_index(id_col)
+        .set_index(id_col).sort_index()
     )
     # rank and fill with 0.5
     if rank_and_fill:
