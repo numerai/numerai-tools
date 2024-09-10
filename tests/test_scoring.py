@@ -167,10 +167,29 @@ class TestScoring(unittest.TestCase):
             ((self.up + self.down) / 2).values.T,
         ).all()
 
-    def test_neutralize(self):
+    def test_neutralize_basic(self):
         assert np.isclose(
             neutralize(self.up.to_frame(), pd.DataFrame([0, 0, 0, 0, 0])).values.T,
             self.up - self.up.mean(),
+        ).all()
+
+    def test_neutralize_multiple_subs(self):
+        assert np.isclose(
+            neutralize(self.up_down.to_frame(), self.down_up.to_frame()).values.T,
+            [0, 0, 0, 0, 0],
+        ).all()
+
+    def test_neutralize_multiple_subs_multiple_neutralizers(self):
+        # ensure it works for multiple submissions/neutralizers
+        assert np.isclose(
+            neutralize(
+                pd.concat([self.up_down, self.up_down], axis=1),
+                pd.concat([self.down_up, self.down_up], axis=1),
+            ).values.T,
+            [
+                [0, 0, 0, 0, 0],
+                [0, 0, 0, 0, 0],
+            ],
         ).all()
         assert np.isclose(
             neutralize(
@@ -183,21 +202,43 @@ class TestScoring(unittest.TestCase):
                 [self.up - self.up.mean(), self.down - self.down.mean()], axis=1
             ).values.T,
         ).all()
-        assert np.isclose(
-            neutralize(self.up_down.to_frame(), self.down_up.to_frame()).values.T,
-            [0, 0, 0, 0, 0],
-        ).all()
-        # ensure it works for multiple submissions/neutralizers
+
+    def test_neutralize_proportion(self):
+        # Test with proportion less than 1
         assert np.isclose(
             neutralize(
-                pd.concat([self.up_down, self.up_down], axis=1),
-                pd.concat([self.down_up, self.down_up], axis=1),
+                self.up.to_frame(), pd.DataFrame([0, 0, 0, 0, 0]), proportion=0.5
             ).values.T,
-            [
-                [0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0],
-            ],
+            (self.up - self.up.mean() * 0.5),
         ).all()
+
+        # Test with proportion equal to 0
+        assert np.isclose(
+            neutralize(
+                self.up.to_frame(), pd.DataFrame([0, 0, 0, 0, 0]), proportion=0
+            ).values.T,
+            self.up,
+        ).all()
+
+    def test_neutralize_with_nans(self):
+        # Test with NaNs in input data
+        up_with_nans = self.up.copy()
+        up_with_nans[2] = np.nan
+        self.assertRaisesRegex(
+            AssertionError,
+            "Data contains NaNs",
+            neutralize,
+            up_with_nans.to_frame(),
+            pd.DataFrame([0, 0, 0, 0, 0]),
+        )
+
+    def test_neutralize_large_data(self):
+        # Test with larger dataset
+        large_data = pd.DataFrame(np.random.randn(1000, 10))
+        neutralizers = pd.DataFrame(np.random.randn(1000, 5))
+        neutralized = neutralize(large_data, neutralizers)
+        assert neutralized.shape == large_data.shape
+        assert not np.isnan(neutralized).any().any()
 
     def test_numerai_corr_doesnt_clobber_targets(self):
         s = [x / 4 for x in range(5)]
