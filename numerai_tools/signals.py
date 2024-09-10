@@ -40,4 +40,6 @@ def churn(
         return 1 - avg_overlap
 
     s1, s2 = filter_sort_index(s1, s2)
+    assert s1.std() > 0, "s1 must have non-zero standard deviation"
+    assert s2.std() > 0, "s2 must have non-zero standard deviation"
     return 1 - spearman_correlation(s1, s2)
