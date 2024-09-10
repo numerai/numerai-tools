@@ -37,8 +37,8 @@ if __name__ == "__main__":
         packages=find_packages(exclude=["tests"]),
         install_requires=[
             "pandas>=1.3.1",
-            "numpy~=1.26.2",
-            "scipy~=1.11.4",
+            "numpy>=1.26.2",
+            "scipy>=1.11.4",
             "scikit-learn>=1.3.0",
         ],
     )
