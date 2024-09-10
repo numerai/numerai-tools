@@ -36,76 +36,119 @@ class TestSubmissions(unittest.TestCase):
         ]
 
     def test_validate_headers(self):
-        for sub in self.classic_subs:
-            assert validate_headers(
-                NUMERAI_ALLOWED_ID_COLS, NUMERAI_ALLOWED_PRED_COLS, sub
-            ) == tuple(sub.columns)
-        for sub in self.signals_subs:
-            assert validate_headers(
-                SIGNALS_ALLOWED_ID_COLS, SIGNALS_ALLOWED_PRED_COLS, sub
-            ) == tuple(sub.columns)
-        bad_headers = generate_submission(self.ids, "test1", "test2")
+        assert validate_headers(
+            ["test1"], ["test2"], generate_submission(self.ids, "test1", "test2")
+        ) == ("test1", "test2")
+
+    def test_validate_headers_wrong_name(self):
         self.assertRaisesRegex(
             AssertionError,
             "headers must be one of",
             validate_headers,
-            NUMERAI_ALLOWED_ID_COLS,
-            NUMERAI_ALLOWED_PRED_COLS,
-            bad_headers,
+            ["test1"],
+            ["test2"],
+            generate_submission(self.ids, "wrong", "test2"),
         )
         self.assertRaisesRegex(
             AssertionError,
             "headers must be one of",
             validate_headers,
-            SIGNALS_ALLOWED_ID_COLS,
-            SIGNALS_ALLOWED_PRED_COLS,
-            bad_headers,
+            ["test1"],
+            ["test2"],
+            generate_submission(self.ids, "test1", "wrong"),
+        )
+
+    def test_validate_headers_missing(self):
+        self.assertRaisesRegex(
+            AssertionError,
+            "headers must be one of",
+            validate_headers,
+            ["test1"],
+            ["test2"],
+            generate_submission(self.ids, "test1", "test2")[["test1"]],
         )
         self.assertRaisesRegex(
             AssertionError,
             "headers must be one of",
             validate_headers,
-            NUMERAI_ALLOWED_ID_COLS,
-            NUMERAI_ALLOWED_PRED_COLS,
-            bad_headers[["test1"]],
-        )
-        self.assertRaisesRegex(
-            AssertionError,
-            "headers must be one of",
-            validate_headers,
-            SIGNALS_ALLOWED_ID_COLS,
-            SIGNALS_ALLOWED_PRED_COLS,
-            bad_headers[["test1"]],
+            ["test1"],
+            ["test2"],
+            generate_submission(self.ids, "test1", "test2")[["test2"]],
         )
 
     def test_validate_headers_numerai(self):
         for sub in self.classic_subs:
             assert validate_headers_numerai(sub) == tuple(sub.columns)
-        bad_headers = generate_submission(self.ids, "test1", "test2")
-        self.assertRaisesRegex(
-            AssertionError,
-            "headers must be one of",
-            validate_headers_numerai,
-            bad_headers,
-        )
+
+    def test_validate_headers_numerai_wrong_name(self):
+        for sub in self.classic_subs:
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_numerai,
+                sub.rename(columns={sub.columns[0]: "wrong"}),
+            )
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_numerai,
+                sub.rename(columns={sub.columns[1]: "wrong"}),
+            )
+
+    def test_validate_headers_numerai_missing(self):
+        for sub in self.classic_subs:
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_numerai,
+                sub[[sub.columns[0]]],
+            )
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_numerai,
+                sub[[sub.columns[1]]],
+            )
 
     def test_validate_headers_signals(self):
         for sub in self.signals_subs:
             assert validate_headers_signals(sub) == tuple(sub.columns)
-        bad_headers = generate_submission(self.ids, "test1", "test2")
-        self.assertRaisesRegex(
-            AssertionError,
-            "headers must be one of",
-            validate_headers_signals,
-            bad_headers,
-        )
+
+    def test_validate_headers_signals_wrong_name(self):
+        for sub in self.signals_subs:
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_signals,
+                sub.rename(columns={sub.columns[0]: "wrong"}),
+            )
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_signals,
+                sub.rename(columns={sub.columns[1]: "wrong"}),
+            )
+
+    def test_validate_headers_signals_missing(self):
+        for sub in self.signals_subs:
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_signals,
+                sub[[sub.columns[0]]],
+            )
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_signals,
+                sub[[sub.columns[1]]],
+            )
 
     def test_validate_values(self):
-        ids = generate_ids(8, 10)
-        classic_sub = generate_submission(ids, "id", "prediction")
-        assert validate_values(classic_sub, "prediction") is None
+        validate_values(generate_submission(self.ids, "id", "prediction"), "prediction")
 
-        nan_sub = classic_sub.copy()
+    def test_validate_values_nans(self):
+        nan_sub = generate_submission(self.ids, "id", "prediction")
         nan_sub.loc[0, "prediction"] = np.nan
         self.assertRaisesRegex(
             AssertionError,
@@ -115,18 +158,28 @@ class TestSubmissions(unittest.TestCase):
             "prediction",
         )
 
-        negative_sub = classic_sub.copy()
-        negative_sub["prediction"] = -1
+    def test_validate_values_out_of_bounds(self):
+        out_of_bounds_sub = generate_submission(self.ids, "id", "prediction")
+        out_of_bounds_sub.loc[0, "prediction"] = -1
         self.assertRaisesRegex(
             AssertionError,
             "values must be between 0 and 1 exclusive",
             validate_values,
-            negative_sub,
+            out_of_bounds_sub,
+            "prediction",
+        )
+        out_of_bounds_sub.loc[0, "prediction"] = 2
+        self.assertRaisesRegex(
+            AssertionError,
+            "values must be between 0 and 1 exclusive",
+            validate_values,
+            out_of_bounds_sub,
             "prediction",
         )
 
-        const_sub = classic_sub.copy()
-        const_sub["prediction"] = 0
+    def test_validate_values_zero_std(self):
+        const_sub = generate_submission(self.ids, "id", "prediction")
+        const_sub["prediction"] = 0.5
         self.assertRaisesRegex(
             AssertionError,
             "submission must have non-zero standard deviation",
@@ -136,65 +189,125 @@ class TestSubmissions(unittest.TestCase):
         )
 
     def test_validate_ids(self):
-        sub = self.signals_subs[0]
-        id_col, pred_col = validate_headers_signals(sub)
-        new_sub, invalid_ids = validate_ids(self.ids, sub, id_col, len(self.ids))
-        assert (new_sub == sub.sort_values(id_col)).all().all()
+        sub = generate_submission(self.ids, "id", "prediction")
+        new_sub, invalid_ids = validate_ids(self.ids, sub, "id", len(self.ids))
+        assert (new_sub == sub.sort_values("id")).all().all()
         assert invalid_ids == []
 
-        # test nans
-        nan_sub = sub.copy()
-        nan_sub.loc[0, id_col] = np.nan
+    def test_validate_ids_nans(self):
+        nan_sub = generate_submission(self.ids, "id", "prediction")
+        nan_sub.loc[0, "id"] = np.nan
         self.assertRaisesRegex(
             AssertionError,
             "must not contain NaNs",
             validate_ids,
             self.ids,
             nan_sub,
-            id_col,
+            "id",
             len(self.ids),
         )
 
-        if id_col == "cusip":
-            # check that cusips are zfilled
-            cusip_sub = sub.copy()
-            cusip_sub.loc[0, id_col] = cusip_sub.loc[0][id_col][1:]
-            cusip_ids = self.ids.copy()
-            cusip_ids.loc[0] = "0" + cusip_ids[0][1:]
-            new_sub, invalid_ids = validate_ids(
-                cusip_ids, cusip_sub, id_col, len(self.ids)
-            )
-            assert (
-                (new_sub[pred_col].sort_values() == cusip_sub[pred_col].sort_values())
-                .all()
-                .all()
-            )
+    def test_validate_ids_all_nan_ids(self):
+        nan_ids = pd.Series([np.nan, np.nan, np.nan])
+        submission = generate_submission(nan_ids, "id", "prediction")
+        self.assertRaisesRegex(
+            AssertionError,
+            "Submission must not contain NaNs",
+            validate_ids,
+            self.ids,
+            submission,
+            "id",
+            len(self.ids),
+        )
 
-        # check duplicates
-        dup_sub = sub.copy()
-        dup_sub.loc[0] = sub.loc[1]
+    def test_validate_ids_cusip(self):
+        # check that cusips are zfilled
+        cusip_sub = generate_submission(self.ids, "cusip", "prediction")
+        cusip_sub.loc[0, "cusip"] = cusip_sub.loc[0]["cusip"][1:]
+        cusip_ids = self.ids.copy()
+        cusip_ids.loc[0] = "0" + cusip_ids[0][1:]
+        new_sub, invalid_ids = validate_ids(
+            cusip_ids, cusip_sub, "cusip", len(self.ids)
+        )
+        assert (
+            (
+                new_sub["prediction"].sort_values()
+                == cusip_sub["prediction"].sort_values()
+            )
+            .all()
+            .all()
+        )
+
+    def test_validate_ids_duplicates(self):
+        dup_sub = generate_submission(self.ids, "id", "prediction")
+        dup_sub.loc[0] = dup_sub.loc[1]
         self.assertRaisesRegex(
             AssertionError,
             "Duplicates detected",
             validate_ids,
             self.ids,
             dup_sub,
-            id_col,
+            "id",
             len(self.ids),
         )
 
-        # check missing ids
-        missing_sub = sub.copy()
-        missing_sub = missing_sub[missing_sub[id_col] != self.ids[0]]
+    def test_validate_ids_duplicate_ids(self):
+        submission = generate_submission(self.ids, "id", "prediction")
+        submission = pd.concat([submission, submission.iloc[:1]])
+        self.assertRaisesRegex(
+            AssertionError,
+            "Duplicates detected",
+            validate_ids,
+            self.ids,
+            submission,
+            "id",
+            len(self.ids),
+        )
+
+    def test_validate_ids_missing(self):
+        missing_sub = generate_submission(self.ids, "id", "prediction")
+        missing_sub = missing_sub[missing_sub["id"] != self.ids[0]]
         self.assertRaisesRegex(
             AssertionError,
             "Not enough stocks submitted",
             validate_ids,
             self.ids,
             missing_sub,
-            id_col,
+            "id",
             len(self.ids),
         )
+
+    def test_validate_ids_empty_submission(self):
+        empty_submission = pd.DataFrame(columns=["id", "prediction"])
+        self.assertRaisesRegex(
+            AssertionError,
+            "Not enough stocks submitted.",
+            validate_ids,
+            self.ids,
+            empty_submission,
+            "id",
+            len(self.ids),
+        )
+
+    def test_validate_ids_all_invalid_ids(self):
+        invalid_ids = pd.Series(["invalid1", "invalid2", "invalid3"])
+        submission = generate_submission(invalid_ids, "id", "prediction")
+        self.assertRaisesRegex(
+            AssertionError,
+            "Not enough stocks submitted.",
+            validate_ids,
+            self.ids,
+            submission,
+            "id",
+            len(self.ids),
+        )
+
+    def test_validate_ids_mixed_valid_invalid_ids(self):
+        mixed_ids = self.ids.tolist() + ["invalid1", "invalid2"]
+        submission = generate_submission(mixed_ids, "id", "prediction")
+        new_sub, invalid_ids = validate_ids(self.ids, submission, "id", len(self.ids))
+        assert (new_sub["id"] == self.ids.sort_values()).all()
+        assert invalid_ids == ["invalid1", "invalid2"]
 
     def test_clean_predictions(self):
         int_sub = generate_submission(self.ids, "id", "prediction", random_vals=False)
@@ -211,6 +324,9 @@ class TestSubmissions(unittest.TestCase):
             .all()
             .all()
         )
+
+    def test_clean_predictions_rank_and_fill(self):
+        int_sub = generate_submission(self.ids, "id", "prediction", random_vals=False)
         assert np.isclose(
             clean_predictions(
                 self.ids,
@@ -222,6 +338,51 @@ class TestSubmissions(unittest.TestCase):
             .values.T,
             [[0.1, 0.3, 0.5, 0.7, 0.9]],
         ).all()
+
+    def test_clean_predictions_empty_predictions(self):
+        empty_predictions = pd.DataFrame(columns=["id", "prediction"])
+        self.assertRaisesRegex(
+            AssertionError,
+            "predictions must not be empty",
+            clean_predictions,
+            self.ids,
+            empty_predictions,
+            id_col="id",
+            rank_and_fill=False,
+        )
+
+    def test_clean_predictions_all_nan_predictions(self):
+        predictions = generate_submission(self.ids, "id", "prediction")
+        predictions["prediction"] = np.nan
+        cleaned_predictions = clean_predictions(
+            self.ids,
+            predictions,
+            id_col="id",
+            rank_and_fill=True,
+        )
+        assert (cleaned_predictions == 0.5).all().all()
+
+    def test_clean_predictions_mixed_valid_invalid_ids(self):
+        mixed_ids = self.ids.tolist() + ["invalid1", "invalid2"]
+        predictions = generate_submission(mixed_ids, "id", "prediction")
+        cleaned_predictions = clean_predictions(
+            self.ids,
+            predictions,
+            id_col="id",
+            rank_and_fill=False,
+        )
+        assert (cleaned_predictions.index == self.ids.sort_values()).all()
+
+    def test_clean_predictions_duplicate_ids(self):
+        predictions = generate_submission(self.ids, "id", "prediction")
+        predictions = pd.concat([predictions, predictions.iloc[:1]])
+        cleaned_predictions = clean_predictions(
+            self.ids,
+            predictions,
+            id_col="id",
+            rank_and_fill=False,
+        )
+        assert not cleaned_predictions.index.duplicated().any()
 
 
 def generate_ids(id_length: int, num_rows: int) -> List[str]:
@@ -260,12 +421,6 @@ def generate_submission(
     Return pd.DataFrame:
         - submission DataFrame with the given columns and ids
     """
-    # if legacy_headers and date_col is None:
-    #     date_col = "friday_date"
-    # elif date_col is None:
-    #     date_col = date_col
-    # else:
-    #     date_col = "date"
     rows = []
     for i, ticker in enumerate(live_ids):
         if random_vals:

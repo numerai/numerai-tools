@@ -114,7 +114,7 @@ def validate_ids(
         len(live_sub) >= min_tickers
     ), f"Not enough stocks submitted. Are you using the latest live ids or live universe?"
 
-    invalid_tickers = list(index_sub.index.difference(live_sub.index))
+    invalid_tickers = list(set(index_sub[id_col]).difference(set(live_sub[id_col])))
     return live_sub, invalid_tickers
 
 
@@ -138,6 +138,10 @@ def clean_predictions(
         id_col: str - the column name of the ids
         rank_and_fill: bool - whether to rank and fill NaNs with 0.5
     """
+    assert len(live_ids) > 0, "live_ids must not be empty"
+    assert live_ids.isna().sum() == 0, "live_ids must not contain NaNs"
+    assert len(predictions) > 0, "predictions must not be empty"
+
     # drop null indices
     predictions = predictions[~predictions[id_col].isna()]
     predictions = (
