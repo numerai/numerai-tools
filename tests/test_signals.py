@@ -28,8 +28,13 @@ class TestSignals(unittest.TestCase):
         )
 
     def test_churn_tb(self):
-        assert np.isclose(churn(self.up, self.up, top_bottom=2), 0)
-        assert np.isclose(churn(self.up, self.up_down, top_bottom=2), 0.5)
-        assert np.isclose(churn(self.up, self.oscillate, top_bottom=2), 0.5)
-        assert np.isclose(churn(self.up, self.down, top_bottom=2), 1)
-        assert np.isclose(churn(self.up, self.constant, top_bottom=2), 0)
+        tmp = churn(self.up, self.up, top_bottom=2)
+        assert np.isclose(tmp, 0), tmp
+        tmp = churn(self.up, self.up_down, top_bottom=2)
+        assert np.isclose(tmp, 0.5), tmp
+        tmp = churn(self.up, self.oscillate, top_bottom=2)
+        assert np.isclose(tmp, 0.5), tmp
+        tmp = churn(self.up, self.down, top_bottom=2)
+        assert np.isclose(tmp, 1), tmp
+        tmp = churn(self.up, self.constant, top_bottom=2)
+        assert np.isclose(tmp, 0), tmp
