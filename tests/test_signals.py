@@ -8,8 +8,6 @@ from numerai_tools.signals import churn
 
 class TestSignals(unittest.TestCase):
     def setUp(self):
-        print(f"\n running {type(self).__name__}")
-
         self.up = pd.Series(list(range(5))).rename("up")
         self.down = pd.Series(list(reversed(range(5)))).rename("down")
         self.up_down = pd.Series([0, 1, 2, 1, 0]).rename("up_down")
@@ -21,7 +19,13 @@ class TestSignals(unittest.TestCase):
         assert np.isclose(churn(self.up, self.up_down), 1)
         assert np.isclose(churn(self.up, self.oscillate), 1)
         assert np.isclose(churn(self.up, self.down), 2)
-        assert np.isnan(churn(self.up, self.constant))
+        self.assertRaisesRegex(
+            AssertionError,
+            "s2 must have non-zero standard deviation",
+            churn,
+            self.up,
+            self.constant,
+        )
 
     def test_churn_tb(self):
         assert np.isclose(churn(self.up, self.up, top_bottom=2), 0)

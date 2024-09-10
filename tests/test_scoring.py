@@ -25,8 +25,6 @@ from numerai_tools.scoring import (
 
 class TestScoring(unittest.TestCase):
     def setUp(self):
-        print(f"\n running {type(self).__name__}")
-
         self.up = pd.Series(list(range(5))).rename("up")
         self.down = pd.Series(list(reversed(range(5)))).rename("down")
         self.up_down = pd.Series([1, 0, 1, 0, 1]).rename("up_down")
