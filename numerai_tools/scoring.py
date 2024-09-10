@@ -329,11 +329,8 @@ def neutralize(
         # add a column of 1s to the neutralizer array in case neutralizer_arr is a single column
         (neutralizer_arr, np.array([1] * len(neutralizer_arr)).reshape(-1, 1))
     )
-    print(neutralizer_arr)
     least_squares = np.linalg.lstsq(neutralizer_arr, df_arr, rcond=1e-6)[0]
-    print(least_squares)
     adjustments = proportion * neutralizer_arr.dot(least_squares)
-    print(adjustments)
     neutral = df_arr - adjustments
     return pd.DataFrame(neutral, index=df.index, columns=df.columns)
 
