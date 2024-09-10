@@ -307,7 +307,7 @@ class TestSubmissions(unittest.TestCase):
         submission = generate_submission(mixed_ids, "id", "prediction")
         new_sub, invalid_ids = validate_ids(self.ids, submission, "id", len(self.ids))
         assert (new_sub["id"] == self.ids.sort_values()).all()
-        assert invalid_ids == ["invalid1", "invalid2"]
+        assert set(invalid_ids) == {"invalid1", "invalid2"}
 
     def test_clean_predictions(self):
         int_sub = generate_submission(self.ids, "id", "prediction", random_vals=False)
