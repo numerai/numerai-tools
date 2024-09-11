@@ -107,11 +107,11 @@ def _validate_ids(
 
     index_sub = submission.copy()
     index_sub[id_col] = index_sub[id_col].astype(str)
-
     if id_col == "cusip":
         # normalize cusip tickers to 9 digits
         index_sub[id_col] = index_sub[id_col].apply(lambda x: x.zfill(9))
 
+    live_ids = live_ids.astype(str)
     live_sub = index_sub[index_sub[id_col].isin(live_ids)].sort_values(id_col)
     assert (
         not live_sub[id_col].duplicated().any()
