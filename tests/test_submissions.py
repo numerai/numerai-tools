@@ -25,7 +25,7 @@ from numerai_tools.submissions import (
 class TestSubmissions(unittest.TestCase):
     def setUp(self):
         # use 9 digits for cusip handling checks
-        self.ids = pd.Series(generate_ids(9, 5))
+        self.ids = generate_ids(9, 5)
         self.classic_subs = [
             generate_submission(self.ids, id_col, pred_col)
             for id_col in NUMERAI_ALLOWED_ID_COLS
@@ -414,7 +414,7 @@ def generate_ids(id_length: int, num_rows: int) -> List[str]:
     while len(values) < num_rows:
         new_value = "".join(random.choices(string.ascii_uppercase, k=id_length))
         values.add(new_value)
-    return list(values)
+    return pd.Series(list(values))
 
 
 def generate_submission(
