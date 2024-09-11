@@ -1,0 +1,7 @@
+repos:
+  - repo: local
+    hooks:
+      - id: test
+        language: system
+        name: test
+        entry: bash -c "python -m unittest"
