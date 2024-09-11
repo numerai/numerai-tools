@@ -19,6 +19,10 @@ SIGNALS_ALLOWED_ID_COLS = [
 SIGNALS_ALLOWED_PRED_COLS = ["prediction", "signal"]
 SIGNALS_MIN_TICKERS = 100
 
+CRYPTO_ALLOWED_ID_COLS = ["symbol"]
+CRYPTO_ALLOWED_PRED_COLS = ["prediction", "signal"]
+CRYPTO_MIN_TICKERS = 100
+
 
 def _validate_headers(
     expected_id_cols: List[str], expected_pred_cols: List[str], submission: pd.DataFrame
@@ -57,6 +61,12 @@ def validate_headers_numerai(submission: pd.DataFrame) -> Tuple[str, str]:
 def validate_headers_signals(submission: pd.DataFrame) -> Tuple[str, str]:
     return _validate_headers(
         SIGNALS_ALLOWED_ID_COLS, SIGNALS_ALLOWED_PRED_COLS, submission
+    )
+
+
+def validate_headers_crypto(submission: pd.DataFrame) -> Tuple[str, str]:
+    return _validate_headers(
+        CRYPTO_ALLOWED_ID_COLS, CRYPTO_ALLOWED_PRED_COLS, submission
     )
 
 
@@ -132,6 +142,10 @@ def validate_ids_numerai(live_ids: pd.Series, submission: pd.DataFrame, id_col: 
 
 def validate_ids_signals(live_ids: pd.Series, submission: pd.DataFrame, id_col: str):
     return _validate_ids(live_ids, submission, id_col, SIGNALS_MIN_TICKERS)
+
+
+def validate_ids_crypto(live_ids: pd.Series, submission: pd.DataFrame, id_col: str):
+    return _validate_ids(live_ids, submission, id_col, CRYPTO_MIN_TICKERS)
 
 
 def clean_predictions(
