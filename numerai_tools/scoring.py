@@ -54,9 +54,9 @@ def filter_sort_top_bottom(
     Returns:
         pd.Series - the filtered and sorted data
     """
-    tb_idx = np.argsort(s)
-    top = s.iloc[tb_idx[:top_bottom]]
-    bot = s.iloc[tb_idx[-top_bottom:]]
+    tb_idx = np.argsort(s, kind="stable")
+    bot = s.iloc[tb_idx[:top_bottom]]
+    top = s.iloc[tb_idx[-top_bottom:]]
     if return_concatenated:
         return pd.concat([top, bot]).sort_index()
     else:
@@ -318,6 +318,7 @@ def neutralize(
     Returns:
         pd.DataFrame - the neutralized data
     """
+    assert not df.isna().any().any(), "Data contains NaNs"
     assert not neutralizers.isna().any().any(), "Neutralizers contain NaNs"
     assert len(df.index) == len(neutralizers.index), "Indices don't match"
     assert (df.index == neutralizers.index).all(), "Indices don't match"
@@ -328,8 +329,8 @@ def neutralize(
         # add a column of 1s to the neutralizer array in case neutralizer_arr is a single column
         (neutralizer_arr, np.array([1] * len(neutralizer_arr)).reshape(-1, 1))
     )
-    inverse_neutralizers = np.linalg.pinv(neutralizer_arr, rcond=1e-6)
-    adjustments = proportion * neutralizer_arr.dot(inverse_neutralizers.dot(df_arr))
+    least_squares = np.linalg.lstsq(neutralizer_arr, df_arr, rcond=1e-6)[0]
+    adjustments = proportion * neutralizer_arr.dot(least_squares)
     neutral = df_arr - adjustments
     return pd.DataFrame(neutral, index=df.index, columns=df.columns)
 

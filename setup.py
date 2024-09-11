@@ -1,7 +1,7 @@
 from setuptools import setup
 from setuptools import find_packages
 
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 
 
 def load(path):
@@ -36,9 +36,9 @@ if __name__ == "__main__":
         package_data={"numerai": ["LICENSE", "README.md"]},
         packages=find_packages(exclude=["tests"]),
         install_requires=[
-            "pandas>=1.3.1, <=2.1.3",
-            "numpy~=1.26.2",
-            "scipy~=1.11.4",
+            "pandas>=1.3.1",
+            "numpy>=1.26.2",
+            "scipy>=1.11.4",
             "scikit-learn>=1.3.0",
         ],
     )
