@@ -17,12 +17,16 @@ SIGNALS_ALLOWED_ID_COLS = [
     "numerai_ticker",
 ]
 SIGNALS_ALLOWED_PRED_COLS = ["prediction", "signal"]
+SIGNALS_MIN_TICKERS = 100
 
 
-def validate_headers(
+def _validate_headers(
     expected_id_cols: List[str], expected_pred_cols: List[str], submission: pd.DataFrame
 ) -> Tuple[str, str]:
     """Validate the given submission has the right headers.
+    It is recommended to use one of the following functions instead of this one:
+        - validate_headers_numerai
+        - validate_headers_signals
 
     Arguments:
         submission -- pandas DataFrame of the submission
@@ -45,13 +49,13 @@ def validate_headers(
 
 
 def validate_headers_numerai(submission: pd.DataFrame) -> Tuple[str, str]:
-    return validate_headers(
+    return _validate_headers(
         NUMERAI_ALLOWED_ID_COLS, NUMERAI_ALLOWED_PRED_COLS, submission
     )
 
 
 def validate_headers_signals(submission: pd.DataFrame) -> Tuple[str, str]:
-    return validate_headers(
+    return _validate_headers(
         SIGNALS_ALLOWED_ID_COLS, SIGNALS_ALLOWED_PRED_COLS, submission
     )
 
@@ -76,13 +80,17 @@ def validate_values(submission: pd.DataFrame, prediction_col: str) -> None:
     ), "submission must have non-zero standard deviation"
 
 
-def validate_ids(
+def _validate_ids(
     live_ids: pd.Series, submission: pd.DataFrame, id_col: str, min_tickers: int
 ) -> Tuple[pd.DataFrame, List[str]]:
     """
     Validates the given submission has no NaNs in the given id column
     and that the submission has a minimum number of non-duplicate ids
     after filtering to the live_ids.
+
+    It is recommended to use one of the following functions instead of this one:
+        - validate_ids_numerai
+        - validate_ids_signals
 
     Arguments:
         live_ids -- pandas Series of the live ids or tickers from live universe
@@ -116,6 +124,14 @@ def validate_ids(
 
     invalid_tickers = list(set(index_sub[id_col]).difference(set(live_sub[id_col])))
     return live_sub, invalid_tickers
+
+
+def validate_ids_numerai(live_ids: pd.Series, submission: pd.DataFrame, id_col: str):
+    return _validate_ids(live_ids, submission, id_col, len(live_ids))
+
+
+def validate_ids_signals(live_ids: pd.Series, submission: pd.DataFrame, id_col: str):
+    return _validate_ids(live_ids, submission, id_col, SIGNALS_MIN_TICKERS)
 
 
 def clean_predictions(

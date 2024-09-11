@@ -11,11 +11,13 @@ from numerai_tools.submissions import (
     NUMERAI_ALLOWED_PRED_COLS,
     SIGNALS_ALLOWED_ID_COLS,
     SIGNALS_ALLOWED_PRED_COLS,
-    validate_headers,
+    _validate_headers,
     validate_headers_numerai,
     validate_headers_signals,
     validate_values,
-    validate_ids,
+    _validate_ids,
+    validate_ids_numerai,
+    validate_ids_signals,
     clean_predictions,
 )
 
@@ -36,7 +38,7 @@ class TestSubmissions(unittest.TestCase):
         ]
 
     def test_validate_headers(self):
-        assert validate_headers(
+        assert _validate_headers(
             ["test1"], ["test2"], generate_submission(self.ids, "test1", "test2")
         ) == ("test1", "test2")
 
@@ -44,7 +46,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "headers must be one of",
-            validate_headers,
+            _validate_headers,
             ["test1"],
             ["test2"],
             generate_submission(self.ids, "wrong", "test2"),
@@ -52,7 +54,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "headers must be one of",
-            validate_headers,
+            _validate_headers,
             ["test1"],
             ["test2"],
             generate_submission(self.ids, "test1", "wrong"),
@@ -62,7 +64,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "headers must be one of",
-            validate_headers,
+            _validate_headers,
             ["test1"],
             ["test2"],
             generate_submission(self.ids, "test1", "test2")[["test1"]],
@@ -70,7 +72,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "headers must be one of",
-            validate_headers,
+            _validate_headers,
             ["test1"],
             ["test2"],
             generate_submission(self.ids, "test1", "test2")[["test2"]],
@@ -190,7 +192,7 @@ class TestSubmissions(unittest.TestCase):
 
     def test_validate_ids(self):
         sub = generate_submission(self.ids, "id", "prediction")
-        new_sub, invalid_ids = validate_ids(self.ids, sub, "id", len(self.ids))
+        new_sub, invalid_ids = _validate_ids(self.ids, sub, "id", len(self.ids))
         assert (new_sub == sub.sort_values("id")).all().all()
         assert invalid_ids == []
 
@@ -200,7 +202,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "must not contain NaNs",
-            validate_ids,
+            _validate_ids,
             self.ids,
             nan_sub,
             "id",
@@ -213,7 +215,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "Submission must not contain NaNs",
-            validate_ids,
+            _validate_ids,
             self.ids,
             submission,
             "id",
@@ -226,7 +228,7 @@ class TestSubmissions(unittest.TestCase):
         cusip_sub.loc[0, "cusip"] = cusip_sub.loc[0]["cusip"][1:]
         cusip_ids = self.ids.copy()
         cusip_ids.loc[0] = "0" + cusip_ids[0][1:]
-        new_sub, invalid_ids = validate_ids(
+        new_sub, invalid_ids = _validate_ids(
             cusip_ids, cusip_sub, "cusip", len(self.ids)
         )
         assert (
@@ -244,7 +246,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "Duplicates detected",
-            validate_ids,
+            _validate_ids,
             self.ids,
             dup_sub,
             "id",
@@ -257,7 +259,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "Duplicates detected",
-            validate_ids,
+            _validate_ids,
             self.ids,
             submission,
             "id",
@@ -270,7 +272,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "Not enough stocks submitted",
-            validate_ids,
+            _validate_ids,
             self.ids,
             missing_sub,
             "id",
@@ -282,7 +284,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "Not enough stocks submitted.",
-            validate_ids,
+            _validate_ids,
             self.ids,
             empty_submission,
             "id",
@@ -295,7 +297,7 @@ class TestSubmissions(unittest.TestCase):
         self.assertRaisesRegex(
             AssertionError,
             "Not enough stocks submitted.",
-            validate_ids,
+            _validate_ids,
             self.ids,
             submission,
             "id",
@@ -305,9 +307,22 @@ class TestSubmissions(unittest.TestCase):
     def test_validate_ids_mixed_valid_invalid_ids(self):
         mixed_ids = self.ids.tolist() + ["invalid1", "invalid2"]
         submission = generate_submission(mixed_ids, "id", "prediction")
-        new_sub, invalid_ids = validate_ids(self.ids, submission, "id", len(self.ids))
+        new_sub, invalid_ids = _validate_ids(self.ids, submission, "id", len(self.ids))
         assert (new_sub["id"] == self.ids.sort_values()).all()
         assert set(invalid_ids) == {"invalid1", "invalid2"}
+
+    def test_validate_ids_numerai(self):
+        sub = generate_submission(self.ids, "id", "prediction")
+        new_sub, invalid_ids = validate_ids_numerai(self.ids, sub, "id")
+        assert (new_sub == sub.sort_values("id")).all().all()
+        assert invalid_ids == []
+
+    def test_validate_ids_signals(self):
+        ids = generate_ids(9, 100)
+        sub = generate_submission(ids, "ticker", "signal")
+        new_sub, invalid_ids = validate_ids_numerai(ids, sub, "ticker")
+        assert (new_sub == sub.sort_values("ticker")).all().all()
+        assert invalid_ids == []
 
     def test_clean_predictions(self):
         int_sub = generate_submission(self.ids, "id", "prediction", random_vals=False)

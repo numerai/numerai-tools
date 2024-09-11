@@ -54,9 +54,9 @@ def filter_sort_top_bottom(
     Returns:
         pd.Series - the filtered and sorted data
     """
-    tb_idx = np.argsort(s)
-    top = s.iloc[tb_idx[:top_bottom]]
-    bot = s.iloc[tb_idx[-top_bottom:]]
+    tb_idx = np.argsort(s, kind="stable")
+    bot = s.iloc[tb_idx[:top_bottom]]
+    top = s.iloc[tb_idx[-top_bottom:]]
     if return_concatenated:
         return pd.concat([top, bot]).sort_index()
     else:

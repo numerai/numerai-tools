@@ -247,24 +247,20 @@ class TestScoring(unittest.TestCase):
         assert pd.Series(s).equals(df["target"]), f"{s} != {list(df['target'].values)}"
 
     def test_filter_top_bottom(self):
-        with self.assertRaises(TypeError):
-            filter_sort_top_bottom(self.up, top_bottom=None)
-        assert np.isclose(
-            filter_sort_top_bottom(self.up, top_bottom=2).values.T, [0, 1, 3, 4]
-        ).all()
-        assert np.isclose(
-            (
-                filter_sort_top_bottom(
-                    self.up, top_bottom=2, return_concatenated=False
-                )[0].values.T
-            ),
-            [0, 1],
-        ).all()
-        assert np.isclose(
-            (
-                filter_sort_top_bottom(
-                    self.up, top_bottom=2, return_concatenated=False
-                )[1].values.T
-            ),
-            [3, 4],
-        ).all()
+        self.assertRaises(
+            TypeError,
+            filter_sort_top_bottom,
+            self.up,
+            top_bottom=None,
+        )
+        np.testing.assert_allclose(
+            filter_sort_top_bottom(self.up, top_bottom=2),
+            [0, 1, 3, 4],
+        )
+        top, bot = filter_sort_top_bottom(
+            self.up,
+            top_bottom=2,
+            return_concatenated=False,
+        )
+        np.testing.assert_allclose(top, [3, 4])
+        np.testing.assert_allclose(bot, [0, 1])
