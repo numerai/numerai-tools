@@ -11,13 +11,17 @@ from numerai_tools.submissions import (
     NUMERAI_ALLOWED_PRED_COLS,
     SIGNALS_ALLOWED_ID_COLS,
     SIGNALS_ALLOWED_PRED_COLS,
+    CRYPTO_ALLOWED_ID_COLS,
+    CRYPTO_ALLOWED_PRED_COLS,
     _validate_headers,
     validate_headers_numerai,
     validate_headers_signals,
+    validate_headers_crypto,
     validate_values,
     _validate_ids,
     validate_ids_numerai,
     validate_ids_signals,
+    validate_ids_crypto,
     clean_predictions,
 )
 
@@ -35,6 +39,11 @@ class TestSubmissions(unittest.TestCase):
             generate_submission(self.ids, id_col, pred_col)
             for id_col in SIGNALS_ALLOWED_ID_COLS
             for pred_col in SIGNALS_ALLOWED_PRED_COLS
+        ]
+        self.crypto_subs = [
+            generate_submission(self.ids, id_col, pred_col)
+            for id_col in CRYPTO_ALLOWED_ID_COLS
+            for pred_col in CRYPTO_ALLOWED_PRED_COLS
         ]
 
     def test_validate_headers(self):
@@ -143,6 +152,40 @@ class TestSubmissions(unittest.TestCase):
                 AssertionError,
                 "headers must be one of",
                 validate_headers_signals,
+                sub[[sub.columns[1]]],
+            )
+
+    def test_validate_headers_crypto(self):
+        for sub in self.crypto_subs:
+            assert validate_headers_crypto(sub) == tuple(sub.columns)
+
+    def test_validate_headers_crypto_wrong_name(self):
+        for sub in self.crypto_subs:
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_crypto,
+                sub.rename(columns={sub.columns[0]: "wrong"}),
+            )
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_crypto,
+                sub.rename(columns={sub.columns[1]: "wrong"}),
+            )
+
+    def test_validate_headers_crypto_missing(self):
+        for sub in self.crypto_subs:
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_crypto,
+                sub[[sub.columns[0]]],
+            )
+            self.assertRaisesRegex(
+                AssertionError,
+                "headers must be one of",
+                validate_headers_crypto,
                 sub[[sub.columns[1]]],
             )
 
@@ -320,7 +363,14 @@ class TestSubmissions(unittest.TestCase):
     def test_validate_ids_signals(self):
         ids = generate_ids(9, 100)
         sub = generate_submission(ids, "ticker", "signal")
-        new_sub, invalid_ids = validate_ids_numerai(ids, sub, "ticker")
+        new_sub, invalid_ids = validate_ids_signals(ids, sub, "ticker")
+        assert (new_sub == sub.sort_values("ticker")).all().all()
+        assert invalid_ids == []
+
+    def test_validate_ids_crypto(self):
+        ids = generate_ids(9, 100)
+        sub = generate_submission(ids, "ticker", "signal")
+        new_sub, invalid_ids = validate_ids_crypto(ids, sub, "ticker")
         assert (new_sub == sub.sort_values("ticker")).all().all()
         assert invalid_ids == []
 
