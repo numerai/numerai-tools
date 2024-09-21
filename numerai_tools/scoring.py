@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.preprocessing import OneHotEncoder
-
+import time
 
 # sometimes when we match up the target/prediction indices,
 # changes in stock universe causes some stocks to enter / leave,
@@ -163,9 +163,20 @@ def power(df: pd.DataFrame, p: float) -> pd.DataFrame:
     """
     assert not df.isna().any().any(), "Data contains NaNs"
     assert np.array_equal(df.index.sort_values(), df.index), "Index is not sorted"
-    result = np.sign(df) * np.abs(df) ** p
-    assert ((result.std() == 0) | (result.corrwith(df) >= 0.9)).all()
-    return result
+    result = np.sign(df.values) * np.abs(df.values) ** p
+    assert (
+        (result.std() == 0)
+        | (
+            np.array(
+                [
+                    np.corrcoef(result[:, i], df.values[:, i])[0, 1]
+                    for i in range(0, result.shape[1])
+                ]
+            )
+            > 0.9
+        )
+    ).all()
+    return pd.DataFrame(result, index=df.index, columns=df.columns)
 
 
 def gaussian(df: pd.DataFrame) -> pd.DataFrame:
@@ -419,6 +430,7 @@ def numerai_corr(
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
     """
+
     targets = targets - targets.mean()
     targets, predictions = filter_sort_index(
         targets, predictions, max_filtered_index_ratio
