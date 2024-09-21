@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.preprocessing import OneHotEncoder
-import time
 
 # sometimes when we match up the target/prediction indices,
 # changes in stock universe causes some stocks to enter / leave,
@@ -430,7 +429,6 @@ def numerai_corr(
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
     """
-
     targets = targets - targets.mean()
     targets, predictions = filter_sort_index(
         targets, predictions, max_filtered_index_ratio
