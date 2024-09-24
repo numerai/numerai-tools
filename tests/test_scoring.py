@@ -1,7 +1,7 @@
 import unittest
 
 import numpy as np
-import pandas as pd
+import pandas as pd  # type: ignore
 
 from numerai_tools.scoring import (
     correlation,

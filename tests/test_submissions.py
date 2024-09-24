@@ -4,7 +4,7 @@ import string
 from typing import List, Optional
 
 import numpy as np
-import pandas as pd
+import pandas as pd  # type: ignore
 
 from numerai_tools.submissions import (
     NUMERAI_ALLOWED_ID_COLS,
@@ -460,7 +460,7 @@ def generate_ids(id_length: int, num_rows: int) -> List[str]:
     Return List[str]:
         - list of unique ascii-valued strings of the given
     """
-    values = set()
+    values: set[str] = set()
     while len(values) < num_rows:
         new_value = "".join(random.choices(string.ascii_uppercase, k=id_length))
         values.add(new_value)
@@ -472,7 +472,7 @@ def generate_submission(
     id_col: str,
     pred_col: str,
     random_vals: bool = True,
-    legacy_headers: Optional[dict] = {},
+    legacy_headers: dict = {},
 ) -> pd.DataFrame:
     """Generates a random vector with given columns and ids.
 

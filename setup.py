@@ -1,7 +1,7 @@
 from setuptools import setup
 from setuptools import find_packages
 
-VERSION = "0.2.2"
+VERSION = "0.2.3"
 
 
 def load(path):
@@ -33,7 +33,9 @@ if __name__ == "__main__":
         platforms="OS Independent",
         classifiers=classifiers,
         license="MIT License",
-        package_data={"numerai": ["LICENSE", "README.md"]},
+        package_data={
+            "numerai_tools": ["LICENSE", "README.md", "py.typed"],
+        },
         packages=find_packages(exclude=["tests"]),
         install_requires=[
             "pandas>=1.3.1",
