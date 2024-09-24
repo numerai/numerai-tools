@@ -1,9 +1,9 @@
 from typing import List, Tuple, Union, Optional
 
 import numpy as np
-import pandas as pd
-from scipy import stats
-from sklearn.preprocessing import OneHotEncoder
+import pandas as pd  # type: ignore
+from scipy import stats  # type: ignore
+from sklearn.preprocessing import OneHotEncoder  # type: ignore
 
 
 # sometimes when we match up the target/prediction indices,
@@ -43,7 +43,7 @@ def filter_sort_index(
 
 def filter_sort_top_bottom(
     s: pd.Series, top_bottom: int, return_concatenated: bool = True
-):
+) -> Union[pd.Series, Tuple[pd.Series, pd.Series]]:
     """Filters the series according to the top n and bottom n values
     then sorts the index and returns the filtered and sorted series.
 
@@ -270,12 +270,12 @@ def correlation_contribution(
 
     if top_bottom is not None and top_bottom > 0:
         # filter each column to its top and bottom n predictions
-        neutral_preds = pd.DataFrame(
+        neutral_preds_df = pd.DataFrame(
             neutral_preds, columns=predictions.columns, index=predictions.index
         ).apply(lambda p: filter_sort_top_bottom(p, top_bottom))
         # create a dataframe for targets to match the filtered predictions
         live_targets = (
-            neutral_preds.apply(
+            neutral_preds_df.apply(
                 lambda p: filter_sort_index(
                     p,
                     live_targets,
@@ -286,7 +286,7 @@ def correlation_contribution(
             .T.values
         )
         # fillna with 0 so we don't get NaNs in the dot product
-        neutral_preds = neutral_preds.fillna(0).values
+        neutral_preds = neutral_preds_df.fillna(0).values
 
     # multiply target and neutralized predictions
     # this is equivalent to covariance b/c mean = 0
@@ -302,7 +302,7 @@ def correlation_contribution(
 
 def neutralize(
     df: pd.DataFrame,
-    neutralizers: np.ndarray,
+    neutralizers: pd.DataFrame,
     proportion: float = 1.0,
 ) -> pd.DataFrame:
     """Neutralize each column of a given DataFrame by each feature in a given
