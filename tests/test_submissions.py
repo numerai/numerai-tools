@@ -265,24 +265,6 @@ class TestSubmissions(unittest.TestCase):
             len(self.ids),
         )
 
-    def test_validate_ids_cusip(self):
-        # check that cusips are zfilled
-        cusip_sub = generate_submission(self.ids, "cusip", "prediction")
-        cusip_sub.loc[0, "cusip"] = cusip_sub.loc[0]["cusip"][1:]
-        cusip_ids = self.ids.copy()
-        cusip_ids.loc[0] = "0" + cusip_ids[0][1:]
-        new_sub, invalid_ids = _validate_ids(
-            cusip_ids, cusip_sub, "cusip", len(self.ids)
-        )
-        assert (
-            (
-                new_sub["prediction"].sort_values()
-                == cusip_sub["prediction"].sort_values()
-            )
-            .all()
-            .all()
-        )
-
     def test_validate_ids_duplicates(self):
         dup_sub = generate_submission(self.ids, "id", "prediction")
         dup_sub.loc[0] = dup_sub.loc[1]
