@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union, Optional
+from typing import List, Tuple, Union, Optional, TypeVar
 
 import numpy as np
 import pandas as pd  # type: ignore
@@ -12,14 +12,13 @@ from sklearn.preprocessing import OneHotEncoder  # type: ignore
 DEFAULT_MAX_FILTERED_INDEX_RATIO = 0.2
 
 
+S1 = TypeVar("S1", bound=Union[pd.DataFrame, pd.Series])
+S2 = TypeVar("S2", bound=Union[pd.DataFrame, pd.Series])
+
+
 def filter_sort_index(
-    s1: Union[pd.DataFrame, pd.Series],
-    s2: Union[pd.DataFrame, pd.Series],
-    max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
-) -> Tuple[
-    Union[pd.DataFrame, pd.Series],
-    Union[pd.DataFrame, pd.Series],
-]:
+    s1: S1, s2: S2, max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO
+) -> Tuple[S1, S2]:
     """Filters the indices of the given series to match each other,
     then sorts the indices, then checks that we didn't filter too many indices
     before returning the filtered and sorted series.

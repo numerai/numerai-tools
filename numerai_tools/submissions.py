@@ -132,15 +132,21 @@ def _validate_ids(
     return live_sub, invalid_tickers
 
 
-def validate_ids_numerai(live_ids: pd.Series, submission: pd.DataFrame, id_col: str):
+def validate_ids_numerai(
+    live_ids: pd.Series, submission: pd.DataFrame, id_col: str
+) -> Tuple[pd.DataFrame, List[str]]:
     return _validate_ids(live_ids, submission, id_col, len(live_ids))
 
 
-def validate_ids_signals(live_ids: pd.Series, submission: pd.DataFrame, id_col: str):
+def validate_ids_signals(
+    live_ids: pd.Series, submission: pd.DataFrame, id_col: str
+) -> Tuple[pd.DataFrame, List[str]]:
     return _validate_ids(live_ids, submission, id_col, SIGNALS_MIN_TICKERS)
 
 
-def validate_ids_crypto(live_ids: pd.Series, submission: pd.DataFrame, id_col: str):
+def validate_ids_crypto(
+    live_ids: pd.Series, submission: pd.DataFrame, id_col: str
+) -> Tuple[pd.DataFrame, List[str]]:
     return _validate_ids(live_ids, submission, id_col, CRYPTO_MIN_TICKERS)
 
 
