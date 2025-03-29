@@ -16,7 +16,10 @@ def filter_sort_index(
     s1: Union[pd.DataFrame, pd.Series],
     s2: Union[pd.DataFrame, pd.Series],
     max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> Tuple[
+    Union[pd.DataFrame, pd.Series],
+    Union[pd.DataFrame, pd.Series],
+]:
     """Filters the indices of the given series to match each other,
     then sorts the indices, then checks that we didn't filter too many indices
     before returning the filtered and sorted series.
@@ -26,7 +29,10 @@ def filter_sort_index(
         s2: Union[pd.DataFrame, pd.Series] - the second dataset to filter and sort
 
     Returns:
-        Tuple[pd.DataFrame, pd.DataFrame] - the filtered and sorted datasets
+        Tuple[
+            Union[pd.DataFrame, pd.Series],
+            Union[pd.DataFrame, pd.Series],
+        ] - the filtered and sorted datasets
     """
     ids = s1.dropna().index.intersection(s2.dropna().index)
     # ensure we didn't filter too many ids
