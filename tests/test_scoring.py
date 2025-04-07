@@ -264,3 +264,53 @@ class TestScoring(unittest.TestCase):
         )
         np.testing.assert_allclose(top, [3, 4])
         np.testing.assert_allclose(bot, [0, 1])
+
+
+if __name__ == "__main__":
+    ## Benchmark
+    import sys
+    import cProfile
+    import timeit
+
+    s = [x / 4 for x in range(5)] * 650
+    df = pd.DataFrame({"target": s, "prediction": reversed(s)})
+
+    def power_bench():
+        power(df[["prediction"]], 1.5)
+
+    def numerai_corr_bench():
+        numerai_corr(df[["prediction"]], df["target"], 1.5)
+
+    def run_benchmark(bench_func, with_cprofile=False):
+        if with_cprofile:
+            # Use cProfile to profile the benchmark
+            print(f"Profiling {bench_func.__name__} with cProfile:")
+            profiler = cProfile.Profile()
+            profiler.enable()
+            execution_time = timeit.timeit(bench_func, number=1000)
+            profiler.disable()
+            profiler.print_stats(sort="cumtime")
+        else:
+            # Use timeit to benchmark
+            execution_time = timeit.timeit(bench_func, number=1000)
+            print(f"Execution time {bench_func.__name__}: {execution_time:.4f} seconds")
+
+    with_cprofile = "--profile" in sys.argv
+    # Check which benchmark to run from command-line arguments
+    if "--benchmark" in sys.argv:
+        selected_bench = sys.argv[sys.argv.index("--benchmark") + 1]
+    else:
+        selected_bench = "both"  # Default to run both
+
+    # Run the selected benchmark(s)
+    if selected_bench == "power":
+        run_benchmark(power_bench, with_cprofile)
+    elif selected_bench == "numerai":
+        run_benchmark(numerai_corr_bench, with_cprofile)
+    elif selected_bench == "both":
+        run_benchmark(power_bench, with_cprofile)
+        run_benchmark(numerai_corr_bench, with_cprofile)
+    else:
+        print(
+            f"Unknown benchmark: {selected_bench}. Use 'power', 'numerai', or 'both'."
+        )
