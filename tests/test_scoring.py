@@ -19,7 +19,10 @@ from numerai_tools.scoring import (
     variance_normalize,
     orthogonalize,
     stake_weight,
+    filter_sort_index,
+    filter_sort_index_many,
     filter_sort_top_bottom,
+    alpha,
 )
 
 
@@ -33,6 +36,44 @@ class TestScoring(unittest.TestCase):
         self.pos_neg = pd.Series([0, -0, 0.5, -0.5, 1.0, -1.0, 2.0, -2.0]).rename(
             "pos_neg"
         )
+
+    def test_filter_sort_index(self):
+        # Test with 2 simple ranges with different indices
+        s = pd.Series([1, 2, 3, 4, 5], index=[0, 1, 2, 3, 4])
+        t = pd.Series([1, 2, 3, 4, 5], index=[1, 2, 3, 4, 5])
+        new_s, new_t = filter_sort_index(s, t)
+        self.assertEqual(len(new_s), 4)
+        self.assertEqual(len(new_t), 4)
+        self.assertTrue(np.array_equal(new_s.index, [1, 2, 3, 4]))
+        self.assertTrue(np.array_equal(new_t.index, [1, 2, 3, 4]))
+        self.assertTrue(np.array_equal(new_s.values, [2, 3, 4, 5]))
+        self.assertTrue(np.array_equal(new_t.values, [1, 2, 3, 4]))
+
+    def test_filter_sort_index_invalid(self):
+        # Ensure assertion error when max filtered ratio is exceeded
+        s = pd.Series([1, 2, 3, 4, 5], index=[0, 1, 2, 3, 4])
+        t = pd.Series([1, 2, 3, 4, 5], index=[1, 2, 3, 4, 5])
+        with self.assertRaises(AssertionError):
+            filter_sort_index(s, t, max_filtered_ratio=0.1)
+
+    def test_filter_sort_index_many(self):
+        # Test with a DataFrame
+        s = pd.Series([1, 2, 3, 4, 5], index=[0, 1, 2, 3, 4])
+        t = pd.Series([1, 2, 3, 4, 5], index=[1, 2, 3, 4, 5])
+        new_s, new_t = filter_sort_index_many([s, t])
+        self.assertEqual(len(new_s), 4)
+        self.assertEqual(len(new_t), 4)
+        self.assertTrue(np.array_equal(new_s.index, [1, 2, 3, 4]))
+        self.assertTrue(np.array_equal(new_t.index, [1, 2, 3, 4]))
+        self.assertTrue(np.array_equal(new_s.values, [2, 3, 4, 5]))
+        self.assertTrue(np.array_equal(new_t.values, [1, 2, 3, 4]))
+
+    def test_filter_sort_index_many_invalid(self):
+        # Ensure assertion error when max filtered ratio is exceeded
+        s = pd.Series([1, 2, 3, 4, 5], index=[0, 1, 2, 3, 4])
+        t = pd.Series([1, 2, 3, 4, 5], index=[1, 2, 3, 4, 5])
+        with self.assertRaises(AssertionError):
+            filter_sort_index_many([s, t], max_filtered_ratio=0.1)
 
     def test_correlation(self):
         assert np.isclose(correlation(self.up, self.up), 1)
@@ -264,3 +305,24 @@ class TestScoring(unittest.TestCase):
         )
         np.testing.assert_allclose(top, [3, 4])
         np.testing.assert_allclose(bot, [0, 1])
+
+    def test_alpha(self):
+        s = pd.DataFrame([[1, 2, 3, 4, 5]]).T
+        N = pd.DataFrame(
+            [
+                [1, 5],
+                [2, 4],
+                [3, 3],
+                [4, 2],
+                [5, 1],
+            ]
+        )
+        v = pd.Series([3, 2, 1, 2, 3]).T
+        t = pd.Series([1, 2, 3, 2, 1]).T
+        scores = alpha(s, N, v, t)
+        expected_scores = np.array([0.0])
+        np.testing.assert_allclose(scores.values, expected_scores)
+
+
+if __name__ == "__main__":
+    unittest.main()

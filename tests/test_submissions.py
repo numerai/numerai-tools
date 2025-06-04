@@ -480,3 +480,7 @@ def generate_submission(
         rows.append(row)
     sub = pd.DataFrame(rows)
     return sub
+
+
+if __name__ == "__main__":
+    unittest.main()
