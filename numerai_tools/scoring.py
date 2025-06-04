@@ -54,7 +54,7 @@ def filter_sort_index_many(
     before returning the filtered and sorted series.
 
     Arguments:
-        l: List[Union[pd.DataFrame, pd.Series]] - the list of datasets to filter and sort
+        inputs: List[Union[pd.DataFrame, pd.Series]] - the list of datasets to filter and sort
 
     Returns:
         List[Union[pd.DataFrame, pd.Series]] - the filtered and sorted datasets
@@ -67,7 +67,7 @@ def filter_sort_index_many(
     # ensure we didn't filter too many ids
     for i in range(len(result)):
         assert len(result[i]) / len(inputs[i]) >= (1 - max_filtered_ratio), (
-            f"l[{i}] does not have enough overlapping ids with the others,"
+            f"inputs[{i}] does not have enough overlapping ids with the others,"
             f" must have >= {round(1-max_filtered_ratio,2)*100}% overlapping ids"
         )
     return result
@@ -530,9 +530,9 @@ def alpha(
         - multiplying the weights by the targets
 
     Arguments:
-        signals: pd.DataFrame - the signals to evaluate
-        N: pd.DataFrame - the normalization factors for the signals
-        v: pd.Series - the weights for each signal
+        predictions: pd.DataFrame - the predictions to evaluate
+        neutralizers: pd.DataFrame - the neutralization columns
+        sample_weights: pd.Series - the universe sampling weights
         targets: pd.Series - the live targets to evaluate against
     """
     assert not predictions.isna().any().any(), "Predictions contain NaNs"
