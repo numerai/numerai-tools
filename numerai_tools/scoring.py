@@ -46,6 +46,33 @@ def filter_sort_index(
     return s1.loc[ids].sort_index(), s2.loc[ids].sort_index()
 
 
+def filter_sort_index_many(
+    inputs: List[S1], max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO
+) -> List[S1]:
+    """Filters the indices of the given list of series to match each other,
+    then sorts the indices, then checks that we didn't filter too many indices
+    before returning the filtered and sorted series.
+
+    Arguments:
+        inputs: List[Union[pd.DataFrame, pd.Series]] - the list of datasets to filter and sort
+
+    Returns:
+        List[Union[pd.DataFrame, pd.Series]] - the filtered and sorted datasets
+    """
+    assert len(inputs) > 0, "List must contain at least one element"
+    ids = inputs[0].dropna().index
+    for i in range(1, len(inputs)):
+        ids = ids.intersection(inputs[i].dropna().index)
+    result = [inputs[i].loc[ids].sort_index() for i in range(len(inputs))]
+    # ensure we didn't filter too many ids
+    for i in range(len(result)):
+        assert len(result[i]) / len(inputs[i]) >= (1 - max_filtered_ratio), (
+            f"inputs[{i}] does not have enough overlapping ids with the others,"
+            f" must have >= {round(1-max_filtered_ratio,2)*100}% overlapping ids"
+        )
+    return result
+
+
 def filter_sort_top_bottom(
     s: pd.Series, top_bottom: int, return_concatenated: bool = True
 ) -> Union[pd.Series, Tuple[pd.Series, pd.Series]]:
@@ -489,3 +516,40 @@ def max_feature_correlation(
     max_feature = feature_correlations.idxmax()
     max_corr = feature_correlations[max_feature]
     return max_feature, max_corr
+
+
+def alpha(
+    predictions: pd.DataFrame,
+    neutralizers: pd.DataFrame,
+    sample_weights: pd.Series,
+    targets: pd.Series,
+) -> pd.Series:
+    """Calculates the "alpha" score:
+        - rank, normalize, and power the signal
+        - convert signal into neutralized weights
+        - multiplying the weights by the targets
+
+    Arguments:
+        predictions: pd.DataFrame - the predictions to evaluate
+        neutralizers: pd.DataFrame - the neutralization columns
+        sample_weights: pd.Series - the universe sampling weights
+        targets: pd.Series - the live targets to evaluate against
+    """
+    assert not predictions.isna().any().any(), "Predictions contain NaNs"
+    assert not neutralizers.isna().any().any(), "Normalization factors contain NaNs"
+    assert not sample_weights.isna().any(), "Weights contain NaNs"
+    predictions, neutralizers, sample_weights, targets = filter_sort_index_many(
+        [predictions, neutralizers, sample_weights, targets]
+    )
+
+    predictions = tie_kept_rank__gaussianize__pow_1_5(predictions)
+    alpha_scores = (
+        predictions.apply(
+            lambda p: (p - (neutralizers @ (neutralizers.T @ (sample_weights * p))))
+            * sample_weights
+        )
+        .apply(lambda w: w - w.mean())
+        .apply(lambda w: w / sum(abs(w)))
+        .apply(lambda w: w @ targets)
+    )
+    return alpha_scores

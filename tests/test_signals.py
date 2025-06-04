@@ -38,3 +38,7 @@ class TestSignals(unittest.TestCase):
         assert np.isclose(tmp, 1), tmp
         tmp = churn(self.up, self.constant, top_bottom=2)
         assert np.isclose(tmp, 0), tmp
+
+
+if __name__ == "__main__":
+    unittest.main()

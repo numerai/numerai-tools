@@ -1,7 +1,7 @@
 import unittest
 import random
 import string
-from typing import List, Optional
+from typing import List
 
 import numpy as np
 import pandas as pd  # type: ignore
@@ -480,3 +480,7 @@ def generate_submission(
         rows.append(row)
     sub = pd.DataFrame(rows)
     return sub
+
+
+if __name__ == "__main__":
+    unittest.main()
