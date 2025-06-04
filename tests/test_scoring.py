@@ -319,9 +319,8 @@ class TestScoring(unittest.TestCase):
         )
         v = pd.Series([3, 2, 1, 2, 3]).T
         t = pd.Series([1, 2, 3, 2, 1]).T
-        scores = alpha(s, N, v, t)
-        expected_scores = np.array([0.0])
-        np.testing.assert_allclose(scores.values, expected_scores)
+        score = alpha(s, N, v, t)
+        np.testing.assert_allclose(score, 0.0, atol=1e-15, rtol=1e-15)
 
 
 if __name__ == "__main__":
