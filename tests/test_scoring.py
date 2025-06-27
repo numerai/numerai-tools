@@ -23,6 +23,7 @@ from numerai_tools.scoring import (
     filter_sort_index_many,
     filter_sort_top_bottom,
     alpha,
+    meta_portfolio_contribution,
 )
 
 
@@ -321,6 +322,24 @@ class TestScoring(unittest.TestCase):
         t = pd.Series([1, 2, 3, 2, 1]).T
         score = alpha(s, N, v, t)
         np.testing.assert_allclose(score, 0.0, atol=1e-15, rtol=1e-15)
+
+    def test_meta_portfolio_contribution(self):
+        s = pd.DataFrame([[1, 2, 3, 4, 5], [1, 2, 1, 2, 1]]).T
+        st = pd.Series([0.6, 0.4])
+        N = pd.DataFrame(
+            [
+                [1, 5],
+                [2, 4],
+                [3, 3],
+                [4, 2],
+                [5, 1],
+            ]
+        )
+        v = pd.Series([3, 2, 1, 2, 3]).T
+        t = pd.Series([1.0, 2.0, 3.0, 2.0, 1.0]).T
+        score = meta_portfolio_contribution(s, st, N, v, t)
+        assert np.isclose(score[0], -0.04329786867021718)
+        assert np.isclose(score[1], 0.06494680300532589)
 
 
 if __name__ == "__main__":

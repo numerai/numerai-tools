@@ -1,5 +1,6 @@
 from typing import List, Tuple, Union, Optional, TypeVar
 
+import torch
 import numpy as np
 import pandas as pd  # type: ignore
 from scipy import stats  # type: ignore
@@ -114,28 +115,38 @@ def rank(df: pd.DataFrame, method: str = "average") -> pd.DataFrame:
 
 
 def tie_broken_rank(df: pd.DataFrame) -> pd.DataFrame:
-    # rank columns, breaking ties by index
+    """Rank columns, breaking ties by index."""
     return rank(df, "first")
 
 
 def tie_kept_rank(df: pd.DataFrame) -> pd.DataFrame:
-    # rank columns, but keep ties
+    """Rank columns, but keep ties."""
     return rank(df, "average")
 
 
 def min_max_normalize(s: pd.Series) -> pd.Series:
-    # scale a series to be between 0 and 1
+    """Scale a series to be between 0 and 1."""
     return (s - s.min()) / (s.max() - s.min())
 
 
 def variance_normalize(df: pd.DataFrame) -> pd.DataFrame:
-    # scale a df such that all columns have std == 1.
+    """Scale a df such that all columns have std == 1."""
     return df / np.std(df, axis=0)
 
 
+def weight_normalize(df: pd.DataFrame) -> pd.DataFrame:
+    """Scale a df such that all columns have absolute value sum == 1."""
+    return df / df.abs().sum(axis=0)
+
+
+def center(df: pd.DataFrame) -> pd.DataFrame:
+    """Shift the df such that all columns have mean == 0."""
+    return df - df.mean()
+
+
 def standardize(df: pd.DataFrame) -> pd.DataFrame:
-    # scale a df such that all columns have mean == 0 and std == 1.
-    return (df - df.mean()) / np.std(df, axis=0)
+    """Scale a df such that all columns have mean == 0 and std == 1."""
+    return variance_normalize(center(df))
 
 
 def validate_indices(live_targets: pd.Series, predictions: pd.Series) -> None:
@@ -518,6 +529,18 @@ def max_feature_correlation(
     return max_feature, max_corr
 
 
+def generate_neutralized_weights(
+    predictions: pd.Series,
+    neutralizers: pd.DataFrame,
+    sample_weights: pd.Series,
+) -> pd.Series:
+    neutral_preds = predictions - (
+        neutralizers @ (neutralizers.T @ (sample_weights * predictions))
+    )
+    neutral_weights = neutral_preds * sample_weights
+    return neutral_weights
+
+
 def alpha(
     predictions: pd.DataFrame,
     neutralizers: pd.DataFrame,
@@ -542,14 +565,58 @@ def alpha(
         [predictions, neutralizers, sample_weights, targets]
     )
 
-    predictions = tie_kept_rank__gaussianize__pow_1_5(predictions)
-    alpha_scores = (
-        predictions.apply(
-            lambda p: (p - (neutralizers @ (neutralizers.T @ (sample_weights * p))))
-            * sample_weights
+    weights = tie_kept_rank__gaussianize__pow_1_5(predictions).apply(
+        lambda s_prime: generate_neutralized_weights(
+            s_prime, neutralizers, sample_weights
         )
-        .apply(lambda w: w - w.mean())
-        .apply(lambda w: w / sum(abs(w)))
-        .apply(lambda w: w @ targets)
     )
+    weights = weight_normalize(center(weights))
+    np.testing.assert_allclose(weights.abs().sum(), 1)
+    alpha_scores = weights.apply(lambda w: w @ targets)
     return alpha_scores
+
+
+def meta_portfolio_contribution(
+    predictions: pd.DataFrame,
+    stakes: pd.Series,
+    neutralizers: pd.DataFrame,
+    sample_weights: pd.Series,
+    targets: pd.Series,
+) -> pd.Series:
+    """Calculates the "meta portfolio" score:
+        - rank, normalize, and power the signal
+        - convert signal into neutralized weights
+        - multiplying the weights by the targets
+
+    Arguments:
+        predictions: pd.DataFrame - the predictions to evaluate
+        stakes: pd.Series - the stakes to use as weights
+        neutralizers: pd.DataFrame - the neutralization columns
+        sample_weights: pd.Series - the universe sampling weights
+        targets: pd.Series - the live targets to evaluate against
+    """
+    assert not predictions.isna().any().any(), "Predictions contain NaNs"
+    assert not neutralizers.isna().any().any(), "Normalization factors contain NaNs"
+    assert not sample_weights.isna().any(), "Weights contain NaNs"
+    predictions, neutralizers, sample_weights, targets = filter_sort_index_many(
+        [predictions, neutralizers, sample_weights, targets]
+    )
+
+    stake_weights = weight_normalize(stakes.fillna(0))
+    assert stake_weights.sum() == 1, "Stakes must sum to 1"
+
+    weights = tie_kept_rank__gaussianize__pow_1_5(predictions).apply(
+        lambda s_prime: generate_neutralized_weights(
+            s_prime, neutralizers, sample_weights
+        )
+    )
+
+    w = torch.tensor(weights[stakes.index].values)
+    s = torch.tensor(stake_weights.values, requires_grad=True)
+    t = torch.tensor(targets.values)
+    swp = w @ s
+    swp = swp - swp.mean()
+    swp = swp / swp.abs().sum()
+    alpha = swp @ t
+    mpc = torch.autograd.grad(alpha, s)[0].numpy()
+    return pd.Series(mpc, index=stakes.index)
