@@ -603,7 +603,7 @@ def meta_portfolio_contribution(
     )
 
     stake_weights = weight_normalize(stakes.fillna(0))
-    assert stake_weights.sum() == 1, "Stakes must sum to 1"
+    assert np.isclose(stake_weights.sum(), 1), "Stakes must sum to 1"
 
     weights = tie_kept_rank__gaussianize__pow_1_5(predictions).apply(
         lambda s_prime: generate_neutralized_weights(
