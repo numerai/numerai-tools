@@ -1,7 +1,7 @@
 from setuptools import setup
 from setuptools import find_packages
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 
 def load(path):
@@ -42,5 +42,6 @@ if __name__ == "__main__":
             "numpy>=1.26.4,<2.0.0",
             "scipy>=1.11.4",
             "scikit-learn>=1.3.0",
+            "torch",
         ],
     )
