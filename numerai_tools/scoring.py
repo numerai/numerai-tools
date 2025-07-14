@@ -570,8 +570,6 @@ def alpha(
             s_prime, neutralizers, sample_weights
         )
     )
-    weights = weight_normalize(center(weights))
-    np.testing.assert_allclose(weights.abs().sum(), 1)
     alpha_scores = weights.apply(lambda w: w @ targets)
     return alpha_scores
 
