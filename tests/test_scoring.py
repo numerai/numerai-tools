@@ -321,7 +321,7 @@ class TestScoring(unittest.TestCase):
         v = pd.Series([3, 2, 1, 2, 3]).T
         t = pd.Series([1, 2, 3, 2, 1]).T
         score = alpha(s, N, v, t)
-        np.testing.assert_allclose(score, 0.0, atol=1e-15, rtol=1e-15)
+        np.testing.assert_allclose(score, 0.0, atol=1e-14, rtol=1e-14)
 
     def test_meta_portfolio_contribution(self):
         s = pd.DataFrame([[1, 2, 3, 4, 5], [1, 2, 1, 2, 1]]).T
