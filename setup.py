@@ -1,7 +1,7 @@
 from setuptools import setup
 from setuptools import find_packages
 
-VERSION = "0.3.3"
+VERSION = "0.4.0"
 
 
 def load(path):
@@ -38,10 +38,11 @@ if __name__ == "__main__":
         },
         packages=find_packages(exclude=["tests"]),
         install_requires=[
-            "pandas>=1.3.1",
-            "numpy>=1.26.4,<2.0.0",
-            "scipy>=1.11.4",
-            "scikit-learn>=1.3.0",
+            # pandas 2.2.2 was the first version to support numpy 2
+            "pandas>=2.2.2,<3.0.0",
+            "numpy>=2.0.0,<3.0.0",
+            "scipy>=1.13.0,<2.0.0",
+            "scikit-learn>=1.5.0,<2.0.0",
             "torch",
         ],
     )

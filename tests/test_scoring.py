@@ -318,8 +318,8 @@ class TestScoring(unittest.TestCase):
                 [5, 1],
             ]
         )
-        v = pd.Series([3, 2, 1, 2, 3]).T
-        t = pd.Series([1, 2, 3, 2, 1]).T
+        v = pd.Series([1, 0.5, 1, 0.5, 1]).T
+        t = pd.Series([1, 0, 1, 0, 1]).T
         score = alpha(s, N, v, t)
         np.testing.assert_allclose(score, 0.0, atol=1e-14, rtol=1e-14)
 
