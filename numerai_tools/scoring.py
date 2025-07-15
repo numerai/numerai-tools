@@ -570,7 +570,7 @@ def alpha(
             s_prime, neutralizers, sample_weights
         )
     )
-    alpha_scores = weights.apply(lambda w: w @ targets)
+    alpha_scores = weights.apply(lambda w: w @ targets) / len(targets)
     return alpha_scores
 
 
