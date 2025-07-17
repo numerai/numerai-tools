@@ -19,7 +19,8 @@ def churn(
 
     For 2 given series with overlapping indices, churn is 1 - Spearman Correlation.
     If top_bottom is provided, the churn is calculated as the average of the % of
-    tickers that stay in the top and bottom predictions.
+    tickers that stay in the top and bottom predictions. This is only relevant when
+    the series are rank signals and not portfolio weights.
 
     Arguments:
         s1: pd.Series - the first series to compare
@@ -43,3 +44,29 @@ def churn(
     assert s1.std() > 0, "s1 must have non-zero standard deviation"
     assert s2.std() > 0, "s2 must have non-zero standard deviation"
     return 1 - spearman_correlation(s1, s2)
+
+
+def turnover(
+    s1: pd.Series,
+    s2: pd.Series,
+):
+    """Calculate the turnover between two series. Turnover is the total change in weights between
+    the two series divided by 2.
+
+    For 2 given series with overlapping indices, join the series on index, fill nans with zeroes
+    and calculate turnover as the absolute total difference between the two series divided by 2.
+    This is only relevant when the series are portfolio weights and not rank signals.
+
+    Arguments:
+        s1: pd.Series - the first series to compare
+        s2: pd.Series - the second series to compare
+        top_bottom: Optional[int] - the number of top and bottom predictions to use
+                                    when calculating the correlation. Results in
+                                    2*top_bottom predictions.
+
+    Returns:
+        float - the turnover between the two series
+    """
+    s1, s2 = filter_sort_index(s1, s2)
+    turnover = (s1 - s2).abs().sum() / 2
+    return turnover
