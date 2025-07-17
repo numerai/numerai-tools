@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd  # type: ignore
 
-from numerai_tools.signals import churn
+from numerai_tools.signals import churn, turnover
 
 
 class TestSignals(unittest.TestCase):
@@ -38,6 +38,13 @@ class TestSignals(unittest.TestCase):
         assert np.isclose(tmp, 1), tmp
         tmp = churn(self.up, self.constant, top_bottom=2)
         assert np.isclose(tmp, 0), tmp
+
+    def test_turnover(self):
+        assert np.isclose(turnover(self.up, self.up), 0)
+        assert np.isclose(turnover(self.up, self.up_down), 3)
+        assert np.isclose(turnover(self.up, self.oscillate), 4.5)
+        assert np.isclose(turnover(self.up, self.down), 6)
+        assert np.isclose(turnover(self.up, self.constant), 3.5)
 
 
 if __name__ == "__main__":
