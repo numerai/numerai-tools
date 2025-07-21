@@ -1,6 +1,5 @@
 from typing import List, Tuple, Union, Optional, TypeVar
 
-import torch
 import numpy as np
 import pandas as pd  # type: ignore
 from scipy import stats  # type: ignore
@@ -582,10 +581,11 @@ def meta_portfolio_contribution(
     targets: pd.Series,
 ) -> pd.Series:
     """Calculates the "meta portfolio" score:
-        - rank, normalize, and power the signal
-        - convert signal into neutralized weights
+        - rank, normalize, and power each signal
+        - convert each signal into neutralized weights
+        - generate the stake-weighted portfolio
+        - calculate the gradient of the portfolio w.r.t. the stakes
         - multiplying the weights by the targets
-
     Arguments:
         predictions: pd.DataFrame - the predictions to evaluate
         stakes: pd.Series - the stakes to use as weights
@@ -599,22 +599,27 @@ def meta_portfolio_contribution(
     predictions, neutralizers, sample_weights, targets = filter_sort_index_many(
         [predictions, neutralizers, sample_weights, targets]
     )
-
     stake_weights = weight_normalize(stakes.fillna(0))
     assert np.isclose(stake_weights.sum(), 1), "Stakes must sum to 1"
-
     weights = tie_kept_rank__gaussianize__pow_1_5(predictions).apply(
         lambda s_prime: generate_neutralized_weights(
             s_prime, neutralizers, sample_weights
         )
     )
-
-    w = torch.tensor(weights[stakes.index].values)
-    s = torch.tensor(stake_weights.values, requires_grad=True)
-    t = torch.tensor(targets.values)
+    w = weights[stakes.index].values
+    s = stake_weights.values
+    t = targets.values
     swp = w @ s
     swp = swp - swp.mean()
-    swp = swp / swp.abs().sum()
-    alpha = swp @ t
-    mpc = torch.autograd.grad(alpha, s)[0].numpy()
+    swp_abs_sum = np.sum(np.abs(swp))
+    swp_sign = np.sign(swp)
+    alpha_unnormalized_swp_grad = (
+        1
+        / np.power(swp_abs_sum, 2)
+        * (swp_abs_sum * t - swp_sign * np.dot(swp, t)).reshape(-1, 1)
+    )
+    zero_mean_jac_vec_prod = (
+        alpha_unnormalized_swp_grad - alpha_unnormalized_swp_grad.mean()
+    )
+    mpc = (w.T @ zero_mean_jac_vec_prod).squeeze()
     return pd.Series(mpc, index=stakes.index)
