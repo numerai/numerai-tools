@@ -461,7 +461,7 @@ def numerai_corr(
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
     """
-    targets = targets - targets.mean()
+    targets = center(targets)
     targets, predictions = filter_sort_index(
         targets, predictions, max_filtered_index_ratio
     )
@@ -557,14 +557,15 @@ def alpha(
         sample_weights: pd.Series - the universe sampling weights
         targets: pd.Series - the live targets to evaluate against
     """
+    targets = center(targets)
     assert not predictions.isna().any().any(), "Predictions contain NaNs"
     assert not neutralizers.isna().any().any(), "Normalization factors contain NaNs"
     assert not sample_weights.isna().any(), "Weights contain NaNs"
     predictions, neutralizers, sample_weights, targets = filter_sort_index_many(
         [predictions, neutralizers, sample_weights, targets]
     )
-
-    weights = tie_kept_rank__gaussianize__pow_1_5(predictions).apply(
+    ranked_preds = tie_kept_rank__gaussianize__pow_1_5(predictions)
+    weights = ranked_preds.apply(
         lambda s_prime: generate_neutralized_weights(
             s_prime, neutralizers, sample_weights
         )
@@ -593,6 +594,7 @@ def meta_portfolio_contribution(
         sample_weights: pd.Series - the universe sampling weights
         targets: pd.Series - the live targets to evaluate against
     """
+    targets = center(targets)
     assert not predictions.isna().any().any(), "Predictions contain NaNs"
     assert not neutralizers.isna().any().any(), "Normalization factors contain NaNs"
     assert not sample_weights.isna().any(), "Weights contain NaNs"
@@ -611,15 +613,12 @@ def meta_portfolio_contribution(
     t = targets.values
     swp = w @ s
     swp = swp - swp.mean()
-    swp_abs_sum = np.sum(np.abs(swp))
+    l1_norm = np.sum(np.abs(swp))
+    l1_norm_squared = np.power(l1_norm, 2)
     swp_sign = np.sign(swp)
-    alpha_unnormalized_swp_grad = (
-        1
-        / np.power(swp_abs_sum, 2)
-        * (swp_abs_sum * t - swp_sign * np.dot(swp, t)).reshape(-1, 1)
-    )
-    zero_mean_jac_vec_prod = (
-        alpha_unnormalized_swp_grad - alpha_unnormalized_swp_grad.mean()
-    )
-    mpc = (w.T @ zero_mean_jac_vec_prod).squeeze()
+    swp_alpha = np.dot(swp, t)
+    directional_gradient = l1_norm * t - swp_sign * swp_alpha
+    jacobian_vector_product = directional_gradient.reshape(-1, 1) / l1_norm_squared
+    centered_jacobian = jacobian_vector_product - jacobian_vector_product.mean()
+    mpc = (w.T @ centered_jacobian).squeeze()
     return pd.Series(mpc, index=stakes.index)
