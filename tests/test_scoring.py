@@ -22,6 +22,7 @@ from numerai_tools.scoring import (
     filter_sort_index,
     filter_sort_index_many,
     filter_sort_top_bottom,
+    filter_sort_top_bottom_concat,
     alpha,
     meta_portfolio_contribution,
 )
@@ -296,13 +297,12 @@ class TestScoring(unittest.TestCase):
             top_bottom=None,
         )
         np.testing.assert_allclose(
-            filter_sort_top_bottom(self.up, top_bottom=2),
+            filter_sort_top_bottom_concat(self.up, top_bottom=2),
             [0, 1, 3, 4],
         )
         top, bot = filter_sort_top_bottom(
             self.up,
             top_bottom=2,
-            return_concatenated=False,
         )
         np.testing.assert_allclose(top, [3, 4])
         np.testing.assert_allclose(bot, [0, 1])

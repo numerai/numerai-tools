@@ -155,6 +155,18 @@ class TestSubmissions(unittest.TestCase):
                 sub[[sub.columns[1]]],
             )
 
+    def test_validate_headers_signals_data_type_and_date_col(self):
+        fake_sub = generate_submission(self.ids, "ticker", "signal")
+        fake_sub["data_type"] = "signals"
+        fake_sub["friday_date"] = "2023-01-01"
+        with self.assertLogs(level="WARNING") as cm:
+            assert validate_headers_signals(fake_sub) == ("ticker", "signal")
+        self.assertIn(
+            "WARNING:numerai_tools.submissions:data_type column found in Signals submission. This is deprecated and will be removed in the future. "
+            "Please remove the data_type column from your Signals submission.",
+            cm.output[0],
+        )
+
     def test_validate_headers_crypto(self):
         for sub in self.crypto_subs:
             assert validate_headers_crypto(sub) == tuple(sub.columns)
@@ -432,7 +444,7 @@ class TestSubmissions(unittest.TestCase):
         assert not cleaned_predictions.index.duplicated().any()
 
 
-def generate_ids(id_length: int, num_rows: int) -> List[str]:
+def generate_ids(id_length: int, num_rows: int) -> pd.Series:
     """Generates a given number of unique ascii-valued strings of a given length.
 
     Arguments:

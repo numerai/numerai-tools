@@ -1,5 +1,6 @@
 from numerai_tools.scoring import tie_kept_rank
 
+import logging
 from typing import Tuple, List
 
 import pandas as pd
@@ -16,11 +17,14 @@ SIGNALS_ALLOWED_ID_COLS = [
     "numerai_ticker",
 ]
 SIGNALS_ALLOWED_PRED_COLS = ["prediction", "signal"]
+SIGNALS_ALLOWED_DATE_COLS = ["friday_date", "date"]
 SIGNALS_MIN_TICKERS = 100
 
 CRYPTO_ALLOWED_ID_COLS = ["symbol"]
 CRYPTO_ALLOWED_PRED_COLS = ["prediction", "signal"]
 CRYPTO_MIN_TICKERS = 100
+
+logger = logging.getLogger(__name__)
 
 
 def _validate_headers(
@@ -58,6 +62,17 @@ def validate_headers_numerai(submission: pd.DataFrame) -> Tuple[str, str]:
 
 
 def validate_headers_signals(submission: pd.DataFrame) -> Tuple[str, str]:
+    if "data_type" in submission.columns:
+        logger.warning(
+            "data_type column found in Signals submission. This is deprecated and will be removed in the future. "
+            "Please remove the data_type column from your Signals submission."
+        )
+        date_col = [
+            date_col
+            for date_col in SIGNALS_ALLOWED_DATE_COLS
+            if date_col in list(submission.columns)
+        ]
+        submission = submission.drop(columns=["data_type", *date_col], errors="ignore")
     return _validate_headers(
         SIGNALS_ALLOWED_ID_COLS, SIGNALS_ALLOWED_PRED_COLS, submission
     )
@@ -155,7 +170,7 @@ def clean_predictions(
     predictions: pd.DataFrame,
     id_col: str,
     rank_and_fill: bool,
-) -> pd.Series:
+) -> pd.DataFrame:
     """Prepare predictions for submission to Numerai.
     Filters out ids not in live data, drops duplicates, sets ids as index,
     then optionally ranks (keeping ties) and fills NaNs with 0.5.
@@ -169,6 +184,7 @@ def clean_predictions(
         predictions: pd.DataFrame - the predictions to clean
         id_col: str - the column name of the ids
         rank_and_fill: bool - whether to rank and fill NaNs with 0.5
+        left_join_ids: bool - whether to left join the predictions onto the ids
     """
     assert len(live_ids) > 0, "live_ids must not be empty"
     assert live_ids.isna().sum() == 0, "live_ids must not contain NaNs"
@@ -177,13 +193,15 @@ def clean_predictions(
     # drop null indices
     predictions = predictions[~predictions[id_col].isna()]
     predictions = (
-        predictions
-        # filter out ids not in live data
-        [predictions[id_col].isin(live_ids)]
+        predictions[
+            # filter out ids not in live data
+            predictions[id_col].isin(live_ids)
+        ]
         # drop duplicate ids (keep first)
         .drop_duplicates(subset=id_col, keep="first")
         # set ids as index
-        .set_index(id_col).sort_index()
+        .set_index(id_col)
+        .sort_index()
     )
     # rank and fill with 0.5
     if rank_and_fill:

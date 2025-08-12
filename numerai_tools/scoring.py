@@ -1,8 +1,8 @@
-from typing import List, Tuple, Union, Optional, TypeVar
+from typing import List, Tuple, Union, Optional, TypeVar, cast, Any
 
 import numpy as np
-import pandas as pd  # type: ignore
-from scipy import stats  # type: ignore
+import pandas as pd
+from scipy import stats
 from sklearn.preprocessing import OneHotEncoder  # type: ignore
 
 
@@ -43,12 +43,13 @@ def filter_sort_index(
         "s2 does not have enough overlapping ids with s1,"
         f" must have >= {round(1-max_filtered_ratio,2)*100}% overlapping ids"
     )
-    return s1.loc[ids].sort_index(), s2.loc[ids].sort_index()
+    return cast(S1, s1.loc[ids].sort_index()), cast(S2, s2.loc[ids].sort_index())
 
 
 def filter_sort_index_many(
-    inputs: List[S1], max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO
-) -> List[S1]:
+    inputs: List[Any],
+    max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
+) -> List[Any]:
     """Filters the indices of the given list of series to match each other,
     then sorts the indices, then checks that we didn't filter too many indices
     before returning the filtered and sorted series.
@@ -74,25 +75,38 @@ def filter_sort_index_many(
 
 
 def filter_sort_top_bottom(
-    s: pd.Series, top_bottom: int, return_concatenated: bool = True
-) -> Union[pd.Series, Tuple[pd.Series, pd.Series]]:
+    s: pd.Series, top_bottom: int
+) -> Tuple[pd.Series, pd.Series]:
     """Filters the series according to the top n and bottom n values
-    then sorts the index and returns the filtered and sorted series.
+    then sorts the index and returns two filtered and sorted series
+    for the top and bottom values respectively.
 
     Arguments:
         s: pd.Series - the data to filter and sort
         top_bottom: int - the number of top n and bottom n values to keep
 
     Returns:
-        pd.Series - the filtered and sorted data
+        Tuple[pd.Series, pd.Series] - the filtered and sorted top and bottom series respectively
     """
     tb_idx = np.argsort(s, kind="stable")
     bot = s.iloc[tb_idx[:top_bottom]]
     top = s.iloc[tb_idx[-top_bottom:]]
-    if return_concatenated:
-        return pd.concat([top, bot]).sort_index()
-    else:
-        return top.sort_index(), bot.sort_index()
+    return top.sort_index(), bot.sort_index()
+
+
+def filter_sort_top_bottom_concat(s: pd.Series, top_bottom: int) -> pd.Series:
+    """Similar to filter_sort_top_bottom, but concatenates the top and bottom series
+    into 1 series and then sorts the index.
+
+    Arguments:
+        s: pd.Series - the data to filter and sort
+        top_bottom: int - the number of top n and bottom n values to keep
+
+    Returns:
+        pd.Series - the concatenated and sorted series of top and bottom values
+    """
+    top, bot = filter_sort_top_bottom(s, top_bottom)
+    return pd.concat([top, bot]).sort_index()
 
 
 def rank(df: pd.DataFrame, method: str = "average") -> pd.DataFrame:
@@ -133,14 +147,14 @@ def variance_normalize(df: pd.DataFrame) -> pd.DataFrame:
     return df / np.std(df, axis=0)
 
 
-def weight_normalize(df: pd.DataFrame) -> pd.DataFrame:
-    """Scale a df such that all columns have absolute value sum == 1."""
-    return df / df.abs().sum(axis=0)
+def weight_normalize(s: S1) -> S1:
+    """Scale a input such that all columns have absolute value sum == 1."""
+    return cast(S1, s / s.abs().sum(axis=0))
 
 
-def center(df: pd.DataFrame) -> pd.DataFrame:
-    """Shift the df such that all columns have mean == 0."""
-    return df - df.mean()
+def center(s: S1) -> S1:
+    """Shift the input such that all columns have mean == 0."""
+    return cast(S1, s - s.mean())
 
 
 def standardize(df: pd.DataFrame) -> pd.DataFrame:
@@ -179,7 +193,7 @@ def pearson_correlation(
     target: pd.Series, predictions: pd.Series, top_bottom: Optional[int] = None
 ) -> float:
     if top_bottom is not None and top_bottom > 0:
-        predictions = filter_sort_top_bottom(predictions, top_bottom)
+        predictions = filter_sort_top_bottom_concat(predictions, top_bottom)
         target, predictions = filter_sort_index(
             target, predictions, (1 - top_bottom / len(target))
         )
@@ -205,7 +219,7 @@ def power(df: pd.DataFrame, p: float) -> pd.DataFrame:
     """
     assert not df.isna().any().any(), "Data contains NaNs"
     assert np.array_equal(df.index.sort_values(), df.index), "Index is not sorted"
-    result = np.sign(df) * np.abs(df) ** p
+    result = cast(pd.DataFrame, np.sign(df) * np.abs(df) ** p)
     assert ((result.std() == 0) | (result.corrwith(df) >= 0.9)).all()
     return result
 
@@ -221,7 +235,7 @@ def gaussian(df: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame - the gaussianized data
     """
     assert np.array_equal(df.index.sort_values(), df.index)
-    return df.apply(lambda series: stats.norm.ppf(series))
+    return df.apply(lambda series: cast(np.ndarray, stats.norm.ppf(series)))
 
 
 def orthogonalize(v: np.ndarray, u: np.ndarray) -> np.ndarray:
@@ -303,7 +317,7 @@ def correlation_contribution(
     m = gaussian(tie_kept_rank(meta_model.to_frame()))[meta_model.name].values
 
     # orthogonalize predictions wrt meta model
-    neutral_preds = orthogonalize(p, m)
+    neutral_preds = orthogonalize(p, cast(np.ndarray, m))
 
     # convert target to buckets [-2, -1, 0, 1, 2]
     if (live_targets >= 0).all() and (live_targets <= 1).all():
@@ -314,9 +328,9 @@ def correlation_contribution(
         # filter each column to its top and bottom n predictions
         neutral_preds_df = pd.DataFrame(
             neutral_preds, columns=predictions.columns, index=predictions.index
-        ).apply(lambda p: filter_sort_top_bottom(p, top_bottom))
-        # create a dataframe for targets to match the filtered predictions
-        live_targets = (
+        ).apply(lambda p: filter_sort_top_bottom_concat(p, top_bottom))
+        mmc_matrix = (
+            # create a dataframe for targets to match the filtered predictions
             neutral_preds_df.apply(
                 lambda p: filter_sort_index(
                     p,
@@ -326,19 +340,15 @@ def correlation_contribution(
             )
             .fillna(0)
             .T.values
-        )
-        # fillna with 0 so we don't get NaNs in the dot product
-        neutral_preds = neutral_preds_df.fillna(0).values
-
-    # multiply target and neutralized predictions
-    # this is equivalent to covariance b/c mean = 0
-    mmc = live_targets @ neutral_preds
-    if top_bottom is not None and top_bottom > 0:
+            # then fill NaNs with 0 so we don't get NaNs in the dot product
+            #  and mutiply target w/ neutral preds to get MMC
+        ) @ neutral_preds_df.fillna(0).values
         # only the diagonal is the proper score
-        mmc = np.diag(mmc) / (top_bottom * 2)
+        mmc = np.diag(mmc_matrix) / (top_bottom * 2)
     else:
-        mmc /= len(live_targets)
-
+        # multiply target and neutralized predictions
+        # this is equivalent to covariance b/c mean = 0
+        mmc = (live_targets @ neutral_preds) / len(live_targets)
     return pd.Series(mmc, index=predictions.columns)
 
 
@@ -522,10 +532,10 @@ def max_feature_correlation(
     feature_correlations = features.apply(
         lambda f: pearson_correlation(f, s, top_bottom)
     )
-    feature_correlations = np.abs(feature_correlations)
+    feature_correlations = feature_correlations.abs()
     max_feature = feature_correlations.idxmax()
     max_corr = feature_correlations[max_feature]
-    return max_feature, max_corr
+    return str(max_feature), max_corr
 
 
 def generate_neutralized_weights(
@@ -608,9 +618,9 @@ def meta_portfolio_contribution(
             s_prime, neutralizers, sample_weights
         )
     )
-    w = weights[stakes.index].values
-    s = stake_weights.values
-    t = targets.values
+    w = cast(np.ndarray, weights[stakes.index].values)
+    s = cast(np.ndarray, stake_weights.values)
+    t = cast(np.ndarray, targets.values)
     swp = w @ s
     swp = swp - swp.mean()
     l1_norm = np.sum(np.abs(swp))
