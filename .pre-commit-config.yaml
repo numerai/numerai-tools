@@ -1,6 +1,10 @@
 repos:
   - repo: local
     hooks:
+      - id: type-check
+        language: system
+        name: type-check
+        entry: bash -c "mypy numerai_tools"
       - id: test
         language: system
         name: test
