@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union, Optional, TypeVar, cast, Any
+from typing import List, Literal, Tuple, Union, Optional, TypeVar, cast, Any
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,7 @@ DEFAULT_MAX_FILTERED_INDEX_RATIO = 0.2
 
 S1 = TypeVar("S1", bound=Union[pd.DataFrame, pd.Series])
 S2 = TypeVar("S2", bound=Union[pd.DataFrame, pd.Series])
+RANK_METHOD_TYPE = Literal["average", "min", "max", "first", "dense"]
 
 
 def filter_sort_index(
@@ -109,22 +110,38 @@ def filter_sort_top_bottom_concat(s: pd.Series, top_bottom: int) -> pd.Series:
     return pd.concat([top, bot]).sort_index()
 
 
-def rank(df: pd.DataFrame, method: str = "average") -> pd.DataFrame:
-    """Percentile rank each column of a pandas DataFrame, centering values around 0.5
+def rank_series(s: pd.Series, method: RANK_METHOD_TYPE = "average") -> pd.Series:
+    """Percentile rank a pandas Series, centering values around 0.5.
 
     Arguments:
-        df: pd.DataFrame - the data to rank
+        s: pd.Series - the data to rank
         method: str - the pandas ranking method to use, options:
             'average' (default) - keeps ties
             'first' - breaks ties by index
 
     Returns:
-        pd.DataFrame - the ranked DataFrame
+        pd.Series - the ranked Series
     """
-    assert np.array_equal(df.index.sort_values(), df.index), "unsorted index found"
-    return df.apply(
-        lambda series: (series.rank(method=method).values - 0.5) / series.count()
-    )
+    assert np.array_equal(s.index.sort_values(), s.index), "unsorted index found"
+    return (s.rank(method=method) - 0.5) / s.count()
+
+
+def rank(s: S1, method: RANK_METHOD_TYPE = "average") -> S1:
+    """Percentile rank each columns or series, centering values around 0.5
+
+    Arguments:
+        s: pd.DataFrame | pd.Series - the data to rank
+        method: str - the pandas ranking method to use, options:
+            'average' (default) - keeps ties
+            'first' - breaks ties by index
+
+    Returns:
+        pd.DataFrame | pd.Series - the ranked input data
+    """
+    if isinstance(s, pd.Series):
+        return cast(S1, rank_series(s, method))
+    else:
+        return s.apply(lambda series: rank(series, method=method))
 
 
 def tie_broken_rank(df: pd.DataFrame) -> pd.DataFrame:
@@ -132,9 +149,9 @@ def tie_broken_rank(df: pd.DataFrame) -> pd.DataFrame:
     return rank(df, "first")
 
 
-def tie_kept_rank(df: pd.DataFrame) -> pd.DataFrame:
+def tie_kept_rank(s: S1) -> S1:
     """Rank columns, but keep ties."""
-    return rank(df, "average")
+    return cast(S1, rank(s, "average"))
 
 
 def min_max_normalize(s: pd.Series) -> pd.Series:
@@ -539,14 +556,26 @@ def max_feature_correlation(
 
 
 def generate_neutralized_weights(
-    predictions: pd.Series,
+    predictions: pd.DataFrame,
     neutralizers: pd.DataFrame,
     sample_weights: pd.Series,
+    center_and_normalize: bool = False,
 ) -> pd.Series:
-    neutral_preds = predictions - (
-        neutralizers @ (neutralizers.T @ (sample_weights * predictions))
+    assert not predictions.isna().any().any(), "Predictions contain NaNs"
+    assert not neutralizers.isna().any().any(), "Normalization factors contain NaNs"
+    assert not sample_weights.isna().any(), "Weights contain NaNs"
+    ranked_predictions = tie_kept_rank__gaussianize__pow_1_5(predictions)
+    ranked_predictions, neutralizers, sample_weights = filter_sort_index_many(
+        [ranked_predictions, neutralizers, sample_weights]
     )
-    neutral_weights = neutral_preds * sample_weights
+    neutral_weights = ranked_predictions.apply(
+        lambda s_prime: (
+            s_prime - neutralizers @ (neutralizers.T @ (sample_weights * s_prime))
+        )
+        * sample_weights
+    )
+    if center_and_normalize:
+        neutral_weights = weight_normalize(center(neutral_weights))
     return neutral_weights
 
 
@@ -568,18 +597,8 @@ def alpha(
         targets: pd.Series - the live targets to evaluate against
     """
     targets = center(targets)
-    assert not predictions.isna().any().any(), "Predictions contain NaNs"
-    assert not neutralizers.isna().any().any(), "Normalization factors contain NaNs"
-    assert not sample_weights.isna().any(), "Weights contain NaNs"
-    predictions, neutralizers, sample_weights, targets = filter_sort_index_many(
-        [predictions, neutralizers, sample_weights, targets]
-    )
-    ranked_preds = tie_kept_rank__gaussianize__pow_1_5(predictions)
-    weights = ranked_preds.apply(
-        lambda s_prime: generate_neutralized_weights(
-            s_prime, neutralizers, sample_weights
-        )
-    )
+    predictions, targets = filter_sort_index(predictions, targets)
+    weights = generate_neutralized_weights(predictions, neutralizers, sample_weights)
     alpha_scores = weights.apply(lambda w: w @ targets) / len(targets)
     return alpha_scores
 
@@ -605,19 +624,10 @@ def meta_portfolio_contribution(
         targets: pd.Series - the live targets to evaluate against
     """
     targets = center(targets)
-    assert not predictions.isna().any().any(), "Predictions contain NaNs"
-    assert not neutralizers.isna().any().any(), "Normalization factors contain NaNs"
-    assert not sample_weights.isna().any(), "Weights contain NaNs"
-    predictions, neutralizers, sample_weights, targets = filter_sort_index_many(
-        [predictions, neutralizers, sample_weights, targets]
-    )
+    predictions, targets = filter_sort_index(predictions, targets)
     stake_weights = weight_normalize(stakes.fillna(0))
     assert np.isclose(stake_weights.sum(), 1), "Stakes must sum to 1"
-    weights = tie_kept_rank__gaussianize__pow_1_5(predictions).apply(
-        lambda s_prime: generate_neutralized_weights(
-            s_prime, neutralizers, sample_weights
-        )
-    )
+    weights = generate_neutralized_weights(predictions, neutralizers, sample_weights)
     w = cast(np.ndarray, weights[stakes.index].values)
     s = cast(np.ndarray, stake_weights.values)
     t = cast(np.ndarray, targets.values)

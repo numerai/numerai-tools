@@ -1,0 +1,52 @@
+[project]
+name = "numerai-tools"
+version = "0.5.0.dev2"
+description = "A collection of open-source tools to help interact with Numerai, model data, and automate submissions."
+authors = [
+    {name = "Numerai Engineering",email = "engineering@numer.ai"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+homepage = "https://numer.ai"
+repository = "https://github.com/numerai/numerai-tools"
+documentation = "https://docs.numer.ai/"
+
+[tool.poetry]
+packages = [
+    {include = "numerai_tools", from = "."},
+]
+include = [
+    { path = "LICENSE", format = ["sdist", "wheel"] },
+    { path = "README.md", format = ["sdist", "wheel"] },
+    { path = "numerai_tools/py.typed", format = ["sdist", "wheel"] }
+]
+
+[tool.poetry.dependencies]
+pandas = "^2.2.2"
+numpy = "^2.0.0"
+scipy = "^1.13.0"
+scikit-learn = "^1.5.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+mypy = "^1.15.0"
+ruff = "^0.5.4"
+pandas-stubs = "^2.3.0.250703"
+scipy-stubs = "^1.16.1.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

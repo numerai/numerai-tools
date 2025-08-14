@@ -62,17 +62,6 @@ def validate_headers_numerai(submission: pd.DataFrame) -> Tuple[str, str]:
 
 
 def validate_headers_signals(submission: pd.DataFrame) -> Tuple[str, str]:
-    if "data_type" in submission.columns:
-        logger.warning(
-            "data_type column found in Signals submission. This is deprecated and will be removed in the future. "
-            "Please remove the data_type column from your Signals submission."
-        )
-        date_col = [
-            date_col
-            for date_col in SIGNALS_ALLOWED_DATE_COLS
-            if date_col in list(submission.columns)
-        ]
-        submission = submission.drop(columns=["data_type", *date_col], errors="ignore")
     return _validate_headers(
         SIGNALS_ALLOWED_ID_COLS, SIGNALS_ALLOWED_PRED_COLS, submission
     )
@@ -141,7 +130,7 @@ def _validate_ids(
     # join on live_ids and ensure min tickers reached
     assert (
         len(live_sub) >= min_tickers
-    ), f"Not enough stocks submitted. Are you using the latest live ids or live universe?"
+    ), "Not enough stocks submitted. Are you using the latest live ids or live universe?"
 
     invalid_tickers = list(set(index_sub[id_col]).difference(set(live_sub[id_col])))
     return live_sub, invalid_tickers
@@ -165,12 +154,33 @@ def validate_ids_crypto(
     return _validate_ids(live_ids, submission, id_col, CRYPTO_MIN_TICKERS)
 
 
-def clean_predictions(
-    live_ids: pd.Series,
+def remap_ids(
+    data: pd.DataFrame,
+    ticker_map: pd.Series | pd.DataFrame,
+    src_id_col: str,
+    dst_id_col: str,
+) -> pd.DataFrame:
+    # first, index the universe and data on the source ids
+    indexed_map = ticker_map.reset_index().set_index(src_id_col)
+    indexed_data = data.set_index(src_id_col)
+    return (
+        # then, join the universe and data
+        indexed_map.join(indexed_data)
+        # get just the destination ids and prediction columns
+        .reset_index()[[dst_id_col, *indexed_data.columns]]
+        # finally, sort by the destination ticker column
+        .sort_values(dst_id_col)
+    )
+
+
+def clean_submission(
+    live_ids: pd.Series | pd.DataFrame,
     predictions: pd.DataFrame,
+    name: str,
     id_col: str,
     rank_and_fill: bool,
-) -> pd.DataFrame:
+    tournament: int,
+) -> pd.Series:
     """Prepare predictions for submission to Numerai.
     Filters out ids not in live data, drops duplicates, sets ids as index,
     then optionally ranks (keeping ties) and fills NaNs with 0.5.
@@ -182,28 +192,99 @@ def clean_predictions(
     Arguments:
         live_ids: pd.Series - the ids in the live data
         predictions: pd.DataFrame - the predictions to clean
+        name: str - the name of the submission (used for renaming)
         id_col: str - the column name of the ids
         rank_and_fill: bool - whether to rank and fill NaNs with 0.5
         left_join_ids: bool - whether to left join the predictions onto the ids
     """
     assert len(live_ids) > 0, "live_ids must not be empty"
-    assert live_ids.isna().sum() == 0, "live_ids must not contain NaNs"
+    if isinstance(live_ids, pd.DataFrame):
+        assert live_ids.isna().sum().sum() == 0, "live_ids must not contain NaNs"
+    else:
+        assert live_ids.isna().sum() == 0, "live_ids must not contain NaNs"
     assert len(predictions) > 0, "predictions must not be empty"
 
-    # drop null indices
-    predictions = predictions[~predictions[id_col].isna()]
-    predictions = (
-        predictions[
-            # filter out ids not in live data
-            predictions[id_col].isin(live_ids)
-        ]
-        # drop duplicate ids (keep first)
+    header_fn = {
+        8: validate_headers_numerai,
+        11: validate_headers_signals,
+        12: validate_headers_crypto,
+    }
+    assert (
+        tournament in header_fn
+    ), f"Unsupported tournament {tournament} for cleaning predictions"
+    ticker_col, signal_col = header_fn[tournament](predictions)
+
+    clean_preds = (
+        remap_ids(predictions, live_ids, ticker_col, id_col)
+        # drop NaNs and duplicates
+        .dropna(subset=[id_col])
         .drop_duplicates(subset=id_col, keep="first")
-        # set ids as index
+        # set ids as index and sort
         .set_index(id_col)
         .sort_index()
-    )
+        # rename to given name
+        .rename(columns={signal_col: name})
+    )[name]
     # rank and fill with 0.5
     if rank_and_fill:
-        predictions = tie_kept_rank(predictions).fillna(0.5)
-    return predictions
+        clean_preds = tie_kept_rank(clean_preds).fillna(0.5)
+    return clean_preds
+
+
+def clean_submission_numerai(
+    live_ids: pd.Series, submission: pd.DataFrame, user_id: str
+) -> pd.Series:
+    return clean_submission(
+        live_ids=live_ids,
+        predictions=submission,
+        name=user_id,
+        id_col="id",
+        rank_and_fill=True,
+        tournament=8,
+    )
+
+
+def clean_submission_signals(
+    universe: pd.DataFrame,
+    submission: pd.DataFrame,
+    submission_id: str,
+    index_col: str,
+    rank_and_fill: bool = True,
+) -> pd.Series:
+    # drop data_type and date columns if they exist
+    if "data_type" in submission.columns:
+        logger.warning(
+            "data_type column found in Signals submission. This is deprecated and support will be removed in the future. "
+            "Please remove the data_type column from your Signals submission."
+        )
+    date_col = [
+        date_col
+        for date_col in SIGNALS_ALLOWED_DATE_COLS
+        if date_col in list(submission.columns)
+    ]
+    submission = submission.drop(columns=["data_type", *date_col], errors="ignore")
+    return clean_submission(
+        live_ids=universe,
+        predictions=submission,
+        name=submission_id,
+        id_col=index_col,
+        rank_and_fill=rank_and_fill,
+        tournament=11,
+    )
+
+
+def clean_submission_crypto(
+    universe: pd.DataFrame,
+    submission: pd.DataFrame,
+    submission_id: str,
+    index_col: str,
+    rank_and_fill: bool = True,
+):
+    return clean_submission(
+        live_ids=universe,
+        predictions=submission,
+        name=submission_id,
+        id_col=index_col,
+        rank_and_fill=rank_and_fill,
+        tournament=12,
+    )
