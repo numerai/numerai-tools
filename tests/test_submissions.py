@@ -6,7 +6,10 @@ from typing import List
 import numpy as np
 import pandas as pd  # type: ignore
 
+from numerai_tools.scoring import tie_kept_rank
 from numerai_tools.submissions import (
+    CRYPTO_MIN_TICKERS,
+    SIGNALS_MIN_TICKERS,
     NUMERAI_ALLOWED_ID_COLS,
     NUMERAI_ALLOWED_PRED_COLS,
     SIGNALS_ALLOWED_ID_COLS,
@@ -22,15 +25,16 @@ from numerai_tools.submissions import (
     validate_ids_numerai,
     validate_ids_signals,
     validate_ids_crypto,
-    clean_submission,
-    clean_submission_signals,
+    validate_and_clean_submission_numerai,
+    validate_and_clean_submission_signals,
+    validate_and_clean_submission_crypto,
 )
 
 
 class TestSubmissions(unittest.TestCase):
     def setUp(self):
         # use 9 digits for cusip handling checks
-        self.ids = generate_ids(9, 5)
+        self.ids = generate_ids(9, max(CRYPTO_MIN_TICKERS, SIGNALS_MIN_TICKERS))
         self.classic_subs = [
             generate_submission(self.ids, id_col, pred_col)
             for id_col in NUMERAI_ALLOWED_ID_COLS
@@ -357,50 +361,41 @@ class TestSubmissions(unittest.TestCase):
         assert (new_sub == sub.sort_values("ticker")).all().all()
         assert invalid_ids == []
 
-    def test_clean_submission_numerai(self):
-        int_sub = generate_submission(self.ids, "id", "prediction", random_vals=False)
-        clean_sub = clean_submission(
-            live_ids=self.ids,
-            predictions=int_sub,
-            name="prediction",
-            id_col="id",
-            rank_and_fill=False,
-            tournament=8,
+    def test_validate_and_clean_submission_numerai(self):
+        int_sub = generate_submission(self.ids, "id", "prediction")
+        clean_sub = validate_and_clean_submission_numerai(
+            universe=self.ids, submission=int_sub
         )
         expected_sub = int_sub.set_index("id").sort_index()["prediction"]
         assert clean_sub.index.name == "id"
         assert (clean_sub == expected_sub).all().all()
 
-    def test_clean_submission_signals(self):
-        int_sub = generate_submission(
-            self.ids, "numerai_ticker", "signal", random_vals=False
-        )
+    def test_validate_and_clean_submission_signals(self):
+        int_sub = generate_submission(self.ids, "numerai_ticker", "signal")
         ids = self.ids.copy()
         ids.name = "numerai_ticker"
-        clean_sub = clean_submission(
-            live_ids=ids,
-            predictions=int_sub,
-            name="prediction",
+        clean_sub = validate_and_clean_submission_signals(
+            universe=ids.reset_index(),
+            submission=int_sub,
             id_col="numerai_ticker",
             rank_and_fill=False,
-            tournament=11,
         )
         expected_sub = int_sub.set_index("numerai_ticker").sort_index()["signal"]
         assert clean_sub.index.name == "numerai_ticker"
         assert (clean_sub == expected_sub).all().all()
 
-    def test_clean_submission_signals_data_type_and_date_col(self):
+    def test_validate_and_clean_submission_signals_data_type_and_date_col(self):
         fake_sub = generate_submission(self.ids, "ticker", "signal")
         fake_sub["data_type"] = "signals"
         fake_sub["friday_date"] = "2023-01-01"
         ids = self.ids.copy()
         ids.name = "ticker"
         with self.assertLogs(level="WARNING") as cm:
-            clean_submission_signals(
-                universe=ids,
+            validate_and_clean_submission_signals(
+                universe=ids.reset_index(),
                 submission=fake_sub,
-                submission_id="ticker",
-                index_col="ticker",
+                id_col="ticker",
+                rename_as="ticker",
                 rank_and_fill=True,
             )
         self.assertIn(
@@ -408,89 +403,69 @@ class TestSubmissions(unittest.TestCase):
             "".join(cm.output),
         )
 
-    def test_clean_submission_crypto(self):
-        int_sub = generate_submission(self.ids, "symbol", "signal", random_vals=False)
+    def test_validate_and_clean_submission_crypto(self):
+        int_sub = generate_submission(self.ids, "symbol", "signal")
         ids = self.ids.copy()
         ids.name = "symbol"
-        clean_sub = clean_submission(
-            live_ids=ids,
-            predictions=int_sub,
-            name="signal",
-            id_col="symbol",
-            rank_and_fill=False,
-            tournament=12,
+        clean_sub = validate_and_clean_submission_crypto(
+            universe=ids.reset_index(), submission=int_sub, rank_and_fill=False
         )
         expected_sub = int_sub.set_index("symbol").sort_index()["signal"]
         assert clean_sub.index.name == "symbol"
         assert (clean_sub == expected_sub).all().all()
-
-    def test_clean_submission_rank_and_fill_numerai(self):
-        int_sub = generate_submission(self.ids, "id", "prediction", random_vals=False)
-        clean_sub = clean_submission(
-            live_ids=self.ids,
-            predictions=int_sub,
-            name="prediction",
-            id_col="id",
-            rank_and_fill=True,
-            tournament=8,
+        ranked_sub = validate_and_clean_submission_crypto(
+            universe=ids.reset_index(), submission=int_sub, rank_and_fill=True
         )
-        assert np.isclose(
-            clean_sub.sort_values().values.T,
-            [[0.1, 0.3, 0.5, 0.7, 0.9]],
-        ).all()
+        expected_sub = tie_kept_rank(expected_sub)
+        assert (ranked_sub == expected_sub).all().all()
 
-    def test_clean_submission_empty_predictions(self):
+    def test_validate_and_clean_submission_rank_and_fill_numerai(self):
+        int_sub = generate_submission(self.ids, "id", "prediction")
+        clean_sub = validate_and_clean_submission_numerai(
+            universe=self.ids, submission=int_sub, rank_and_fill=True
+        )
+        expected_sub = tie_kept_rank(int_sub.set_index("id").sort_index()["prediction"])
+        np.testing.assert_allclose(clean_sub, expected_sub)
+
+    def test_validate_and_clean_submission_empty_predictions(self):
         empty_predictions = pd.DataFrame(columns=["id", "prediction"])
         self.assertRaisesRegex(
             AssertionError,
-            "predictions must not be empty",
-            clean_submission,
-            self.ids,
-            empty_predictions,
-            name="prediction",
-            id_col="id",
-            rank_and_fill=False,
-            tournament=8,
+            "Not enough stocks",
+            validate_and_clean_submission_numerai,
+            universe=self.ids,
+            submission=empty_predictions,
         )
 
-    def test_clean_submission_all_nan_predictions(self):
+    def test_validate_and_clean_submission_nan_predictions(self):
         predictions = generate_submission(self.ids, "id", "prediction")
         predictions["prediction"] = np.nan
-        cleaned_predictions = clean_submission(
-            live_ids=self.ids,
-            predictions=predictions,
-            name="prediction",
-            id_col="id",
-            rank_and_fill=True,
-            tournament=8,
+        self.assertRaisesRegex(
+            AssertionError,
+            "submission must not contain NaNs",
+            validate_and_clean_submission_numerai,
+            universe=self.ids,
+            submission=predictions,
         )
-        assert (cleaned_predictions == 0.5).all().all()
 
-    def test_clean_submission_mixed_valid_invalid_ids(self):
+    def test_validate_and_clean_submission_mixed_valid_invalid_ids(self):
         mixed_ids = self.ids.tolist() + ["invalid1", "invalid2"]
         predictions = generate_submission(mixed_ids, "id", "prediction")
-        cleaned_predictions = clean_submission(
-            live_ids=self.ids,
-            predictions=predictions,
-            name="prediction",
-            id_col="id",
-            rank_and_fill=False,
-            tournament=8,
+        cleaned_predictions = validate_and_clean_submission_numerai(
+            universe=self.ids, submission=predictions
         )
         assert (cleaned_predictions.index == self.ids.sort_values()).all()
 
-    def test_clean_submission_duplicate_ids(self):
+    def test_validate_and_clean_submission_duplicate_ids(self):
         predictions = generate_submission(self.ids, "id", "prediction")
         predictions = pd.concat([predictions, predictions.iloc[:1]])
-        cleaned_predictions = clean_submission(
-            live_ids=self.ids,
-            predictions=predictions,
-            name="prediction",
-            id_col="id",
-            rank_and_fill=False,
-            tournament=8,
+        self.assertRaisesRegex(
+            AssertionError,
+            "Duplicates detected",
+            validate_and_clean_submission_numerai,
+            universe=self.ids,
+            submission=predictions,
         )
-        assert not cleaned_predictions.index.duplicated().any()
 
 
 def generate_ids(id_length: int, num_rows: int) -> pd.Series:

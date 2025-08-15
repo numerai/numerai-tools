@@ -1,7 +1,7 @@
 from numerai_tools.scoring import tie_kept_rank
 
 import logging
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
 import pandas as pd
 import numpy as np
@@ -49,9 +49,10 @@ def _validate_headers(
     ]
     columns = submission.columns
     valid_headers = list(columns) in expected_headers
-    assert (
-        valid_headers
-    ), f"headers must be one of {expected_id_cols} and one of {expected_pred_cols}"
+    assert valid_headers, (
+        "invalid_submission_headers: headers must be one of"
+        f" {expected_id_cols} and one of {expected_pred_cols}"
+    )
     return columns[0], columns[1]
 
 
@@ -84,13 +85,13 @@ def validate_values(submission: pd.DataFrame, prediction_col: str) -> None:
     """
     assert (
         submission[prediction_col].isna().sum() == 0
-    ), "submission must not contain NaNs"
+    ), "invalid_submission_values: submission must not contain NaNs"
     assert (
         submission[prediction_col].between(0, 1).all()
-    ), "values must be between 0 and 1 exclusive"
+    ), "invalid_submission_values: values must be between 0 and 1 exclusive"
     assert not np.isclose(
         0, submission[prediction_col].std()
-    ), "submission must have non-zero standard deviation"
+    ), "invalid_submission_values: submission must have non-zero standard deviation"
 
 
 def _validate_ids(
@@ -116,7 +117,7 @@ def _validate_ids(
     """
     assert (
         not submission[id_col].isna().any()
-    ), f"Submission must not contain NaNs in the {id_col} column."
+    ), f"invalid_submission_ids: Submission must not contain NaNs in the {id_col} column."
 
     index_sub = submission.copy()
     index_sub[id_col] = index_sub[id_col].astype(str)
@@ -125,12 +126,13 @@ def _validate_ids(
     live_sub = index_sub[index_sub[id_col].isin(live_ids)].sort_values(id_col)
     assert (
         not live_sub[id_col].duplicated().any()
-    ), f"Duplicates detected in {id_col} for live period."
+    ), f"invalid_submission_ids: Duplicates detected in {id_col} for live period."
 
     # join on live_ids and ensure min tickers reached
-    assert (
-        len(live_sub) >= min_tickers
-    ), "Not enough stocks submitted. Are you using the latest live ids or live universe?"
+    assert len(live_sub) >= min_tickers, (
+        "invalid_submission_ids: Not enough stocks submitted."
+        " Are you using the latest live ids or live universe?"
+    )
 
     invalid_tickers = list(set(index_sub[id_col]).difference(set(live_sub[id_col])))
     return live_sub, invalid_tickers
@@ -176,10 +178,11 @@ def remap_ids(
 def clean_submission(
     live_ids: pd.Series | pd.DataFrame,
     predictions: pd.DataFrame,
-    name: str,
+    ticker_col: str,
+    signal_col: str,
+    rename_as: Optional[str],
     id_col: str,
     rank_and_fill: bool,
-    tournament: int,
 ) -> pd.Series:
     """Prepare predictions for submission to Numerai.
     Filters out ids not in live data, drops duplicates, sets ids as index,
@@ -192,10 +195,14 @@ def clean_submission(
     Arguments:
         live_ids: pd.Series - the ids in the live data
         predictions: pd.DataFrame - the predictions to clean
-        name: str - the name of the submission (used for renaming)
+        ticker_col: str - the name of the ids column
+        signal_col: str - the name of the predictions column
+        rename_as: Optional[str] - the string to which the submission should be renamed
         id_col: str - the column name of the ids
         rank_and_fill: bool - whether to rank and fill NaNs with 0.5
-        left_join_ids: bool - whether to left join the predictions onto the ids
+
+    Returns:
+        pd.Series - the cleaned prediction series with ids as index
     """
     assert len(live_ids) > 0, "live_ids must not be empty"
     if isinstance(live_ids, pd.DataFrame):
@@ -203,16 +210,6 @@ def clean_submission(
     else:
         assert live_ids.isna().sum() == 0, "live_ids must not contain NaNs"
     assert len(predictions) > 0, "predictions must not be empty"
-
-    header_fn = {
-        8: validate_headers_numerai,
-        11: validate_headers_signals,
-        12: validate_headers_crypto,
-    }
-    assert (
-        tournament in header_fn
-    ), f"Unsupported tournament {tournament} for cleaning predictions"
-    ticker_col, signal_col = header_fn[tournament](predictions)
 
     clean_preds = (
         remap_ids(predictions, live_ids, ticker_col, id_col)
@@ -223,32 +220,42 @@ def clean_submission(
         .set_index(id_col)
         .sort_index()
         # rename to given name
-        .rename(columns={signal_col: name})
-    )[name]
+        .rename(columns={signal_col: rename_as})
+    )[rename_as]
     # rank and fill with 0.5
     if rank_and_fill:
         clean_preds = tie_kept_rank(clean_preds).fillna(0.5)
     return clean_preds
 
 
-def clean_submission_numerai(
-    live_ids: pd.Series, submission: pd.DataFrame, user_id: str
+def validate_and_clean_submission_numerai(
+    universe: pd.Series,
+    submission: pd.DataFrame,
+    id_col: str = "id",
+    rename_as: Optional[str] = None,
+    rank_and_fill: bool = False,
 ) -> pd.Series:
+    ticker_col, signal_col = validate_headers_numerai(submission)
+    filtered_sub, invalid_tickers = validate_ids_numerai(
+        universe, submission, ticker_col
+    )
+    validate_values(filtered_sub, signal_col)
     return clean_submission(
-        live_ids=live_ids,
-        predictions=submission,
-        name=user_id,
-        id_col="id",
-        rank_and_fill=True,
-        tournament=8,
+        live_ids=universe,
+        predictions=filtered_sub,
+        ticker_col=ticker_col,
+        signal_col=signal_col,
+        rename_as=rename_as,
+        id_col=id_col,
+        rank_and_fill=rank_and_fill,
     )
 
 
-def clean_submission_signals(
+def validate_and_clean_submission_signals(
     universe: pd.DataFrame,
     submission: pd.DataFrame,
-    submission_id: str,
-    index_col: str,
+    id_col: str,
+    rename_as: Optional[str] = None,
     rank_and_fill: bool = True,
 ) -> pd.Series:
     # drop data_type and date columns if they exist
@@ -263,28 +270,40 @@ def clean_submission_signals(
         if date_col in list(submission.columns)
     ]
     submission = submission.drop(columns=["data_type", *date_col], errors="ignore")
+    ticker_col, signal_col = validate_headers_signals(submission)
+    filtered_sub, invalid_tickers = validate_ids_signals(
+        universe[ticker_col], submission, ticker_col
+    )
+    validate_values(filtered_sub, signal_col)
     return clean_submission(
         live_ids=universe,
-        predictions=submission,
-        name=submission_id,
-        id_col=index_col,
+        predictions=filtered_sub,
+        ticker_col=ticker_col,
+        signal_col=signal_col,
+        rename_as=rename_as,
+        id_col=id_col,
         rank_and_fill=rank_and_fill,
-        tournament=11,
     )
 
 
-def clean_submission_crypto(
+def validate_and_clean_submission_crypto(
     universe: pd.DataFrame,
     submission: pd.DataFrame,
-    submission_id: str,
-    index_col: str,
+    id_col: str = "symbol",
+    rename_as: Optional[str] = None,
     rank_and_fill: bool = True,
 ):
+    ticker_col, signal_col = validate_headers_crypto(submission)
+    filtered_sub, invalid_tickers = validate_ids_crypto(
+        universe[ticker_col], submission, ticker_col
+    )
+    validate_values(filtered_sub, signal_col)
     return clean_submission(
         live_ids=universe,
-        predictions=submission,
-        name=submission_id,
-        id_col=index_col,
+        predictions=filtered_sub,
+        ticker_col=ticker_col,
+        signal_col=signal_col,
+        rename_as=rename_as,
+        id_col=id_col,
         rank_and_fill=rank_and_fill,
-        tournament=12,
     )
