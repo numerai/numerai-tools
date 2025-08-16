@@ -7,7 +7,8 @@ from numerai_tools.scoring import (
     generate_neutralized_weights,
 )
 from numerai_tools.submissions import (
-    validate_and_clean_submission_signals,
+    validate_submission_signals,
+    clean_submission,
     remap_ids,
 )
 
@@ -106,11 +107,20 @@ def calculate_max_churn_and_turnover(
         prev_week_max_turnover -- the maximum turnover from previous submissions
     """
     universe = universe.reset_index()
-    curr_sub_vector = validate_and_clean_submission_signals(
+    (
+        curr_ticker_col,
+        curr_signal_col,
+        curr_sub,
+        _,
+    ) = validate_submission_signals(
         universe=universe,
         submission=curr_sub,
-        id_col=curr_ticker_col,
-        rename_as=curr_signal_col,
+    )
+    curr_sub_vector = clean_submission(
+        universe=universe,
+        submission=curr_sub,
+        src_id_col=curr_ticker_col,
+        src_signal_col=curr_signal_col,
         rank_and_fill=True,
     )
     churn_stats = []
@@ -122,11 +132,22 @@ def calculate_max_churn_and_turnover(
         prev_sub = prev_week_subs[datestamp]
         prev_neutralizer = prev_neutralizers[datestamp]
         prev_weight = prev_sample_weights[datestamp]
-        filtered_prev_sub = validate_and_clean_submission_signals(
+        (
+            prev_ticker_col,
+            prev_signal_col,
+            prev_sub,
+            _,
+        ) = validate_submission_signals(
             universe=universe,
             submission=prev_sub,
-            id_col=curr_ticker_col,
-            rename_as=curr_signal_col,
+        )
+        filtered_prev_sub = clean_submission(
+            universe=universe,
+            submission=prev_sub,
+            src_id_col=prev_ticker_col,
+            src_signal_col=prev_signal_col,
+            dst_id_col=curr_ticker_col,
+            dst_signal_col=curr_signal_col,
             rank_and_fill=True,
         )
         prev_neutralizer = (

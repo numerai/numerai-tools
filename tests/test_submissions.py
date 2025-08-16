@@ -25,9 +25,10 @@ from numerai_tools.submissions import (
     validate_ids_numerai,
     validate_ids_signals,
     validate_ids_crypto,
-    validate_and_clean_submission_numerai,
-    validate_and_clean_submission_signals,
-    validate_and_clean_submission_crypto,
+    validate_submission_numerai,
+    validate_submission_signals,
+    validate_submission_crypto,
+    clean_submission,
 )
 
 
@@ -53,7 +54,9 @@ class TestSubmissions(unittest.TestCase):
 
     def test_validate_headers(self):
         assert _validate_headers(
-            ["test1"], ["test2"], generate_submission(self.ids, "test1", "test2")
+            generate_submission(self.ids, "test1", "test2"),
+            ["test1"],
+            ["test2"],
         ) == ("test1", "test2")
 
     def test_validate_headers_wrong_name(self):
@@ -61,17 +64,17 @@ class TestSubmissions(unittest.TestCase):
             AssertionError,
             "headers must be one of",
             _validate_headers,
+            generate_submission(self.ids, "wrong", "test2"),
             ["test1"],
             ["test2"],
-            generate_submission(self.ids, "wrong", "test2"),
         )
         self.assertRaisesRegex(
             AssertionError,
             "headers must be one of",
             _validate_headers,
+            generate_submission(self.ids, "test1", "wrong"),
             ["test1"],
             ["test2"],
-            generate_submission(self.ids, "test1", "wrong"),
         )
 
     def test_validate_headers_missing(self):
@@ -79,17 +82,17 @@ class TestSubmissions(unittest.TestCase):
             AssertionError,
             "headers must be one of",
             _validate_headers,
+            generate_submission(self.ids, "test1", "test2")[["test1"]],
             ["test1"],
             ["test2"],
-            generate_submission(self.ids, "test1", "test2")[["test1"]],
         )
         self.assertRaisesRegex(
             AssertionError,
             "headers must be one of",
             _validate_headers,
+            generate_submission(self.ids, "test1", "test2")[["test2"]],
             ["test1"],
             ["test2"],
-            generate_submission(self.ids, "test1", "test2")[["test2"]],
         )
 
     def test_validate_headers_numerai(self):
@@ -363,8 +366,17 @@ class TestSubmissions(unittest.TestCase):
 
     def test_validate_and_clean_submission_numerai(self):
         int_sub = generate_submission(self.ids, "id", "prediction")
-        clean_sub = validate_and_clean_submission_numerai(
-            universe=self.ids, submission=int_sub
+        (
+            ticker_col,
+            signal_col,
+            filtered_sub,
+            invalid_tickers,
+        ) = validate_submission_numerai(self.ids, int_sub)
+        clean_sub = clean_submission(
+            universe=self.ids,
+            submission=filtered_sub,
+            src_id_col=ticker_col,
+            src_signal_col=signal_col,
         )
         expected_sub = int_sub.set_index("id").sort_index()["prediction"]
         assert clean_sub.index.name == "id"
@@ -374,30 +386,44 @@ class TestSubmissions(unittest.TestCase):
         int_sub = generate_submission(self.ids, "numerai_ticker", "signal")
         ids = self.ids.copy()
         ids.name = "numerai_ticker"
-        clean_sub = validate_and_clean_submission_signals(
+        (
+            ticker_col,
+            signal_col,
+            filtered_sub,
+            invalid_tickers,
+        ) = validate_submission_signals(ids.reset_index(), int_sub)
+        clean_sub = clean_submission(
             universe=ids.reset_index(),
-            submission=int_sub,
-            id_col="numerai_ticker",
-            rank_and_fill=False,
+            submission=filtered_sub,
+            src_id_col=ticker_col,
+            src_signal_col=signal_col,
         )
         expected_sub = int_sub.set_index("numerai_ticker").sort_index()["signal"]
         assert clean_sub.index.name == "numerai_ticker"
         assert (clean_sub == expected_sub).all().all()
 
-    def test_validate_and_clean_submission_signals_data_type_and_date_col(self):
+    def test_validate_submission_signals_data_type_and_date_col(self):
         fake_sub = generate_submission(self.ids, "ticker", "signal")
         fake_sub["data_type"] = "signals"
         fake_sub["friday_date"] = "2023-01-01"
         ids = self.ids.copy()
         ids.name = "ticker"
         with self.assertLogs(level="WARNING") as cm:
-            validate_and_clean_submission_signals(
-                universe=ids.reset_index(),
-                submission=fake_sub,
-                id_col="ticker",
-                rename_as="ticker",
-                rank_and_fill=True,
-            )
+            (
+                ticker_col,
+                signal_col,
+                filtered_sub,
+                invalid_tickers,
+            ) = validate_submission_signals(ids.reset_index(), fake_sub)
+        clean_sub = clean_submission(
+            universe=ids.reset_index(),
+            submission=filtered_sub,
+            src_id_col=ticker_col,
+            src_signal_col=signal_col,
+        )
+        expected_sub = fake_sub.set_index("ticker").sort_index()["signal"]
+        assert clean_sub.index.name == "ticker"
+        assert (clean_sub == expected_sub).all().all()
         self.assertIn(
             "data_type column found in Signals submission.",
             "".join(cm.output),
@@ -407,65 +433,89 @@ class TestSubmissions(unittest.TestCase):
         int_sub = generate_submission(self.ids, "symbol", "signal")
         ids = self.ids.copy()
         ids.name = "symbol"
-        clean_sub = validate_and_clean_submission_crypto(
-            universe=ids.reset_index(), submission=int_sub, rank_and_fill=False
+        (
+            ticker_col,
+            signal_col,
+            filtered_sub,
+            invalid_tickers,
+        ) = validate_submission_crypto(ids.reset_index(), int_sub)
+        clean_sub = clean_submission(
+            universe=ids.reset_index(),
+            submission=filtered_sub,
+            src_id_col=ticker_col,
+            src_signal_col=signal_col,
         )
         expected_sub = int_sub.set_index("symbol").sort_index()["signal"]
         assert clean_sub.index.name == "symbol"
         assert (clean_sub == expected_sub).all().all()
-        ranked_sub = validate_and_clean_submission_crypto(
-            universe=ids.reset_index(), submission=int_sub, rank_and_fill=True
+        ranked_sub = clean_submission(
+            universe=ids.reset_index(),
+            submission=filtered_sub,
+            src_id_col=ticker_col,
+            src_signal_col=signal_col,
+            rank_and_fill=True,
         )
         expected_sub = tie_kept_rank(expected_sub)
         assert (ranked_sub == expected_sub).all().all()
 
-    def test_validate_and_clean_submission_rank_and_fill_numerai(self):
+    def test_clean_submission_rank_and_fill(self):
         int_sub = generate_submission(self.ids, "id", "prediction")
-        clean_sub = validate_and_clean_submission_numerai(
-            universe=self.ids, submission=int_sub, rank_and_fill=True
+        clean_sub = clean_submission(
+            universe=self.ids,
+            submission=int_sub,
+            src_id_col="id",
+            src_signal_col="prediction",
+            rank_and_fill=True,
         )
         expected_sub = tie_kept_rank(int_sub.set_index("id").sort_index()["prediction"])
         np.testing.assert_allclose(clean_sub, expected_sub)
 
-    def test_validate_and_clean_submission_empty_predictions(self):
+    def test_clean_submission_empty_predictions(self):
         empty_predictions = pd.DataFrame(columns=["id", "prediction"])
         self.assertRaisesRegex(
             AssertionError,
-            "Not enough stocks",
-            validate_and_clean_submission_numerai,
+            "predictions must not be empty",
+            clean_submission,
             universe=self.ids,
             submission=empty_predictions,
+            src_id_col="id",
+            src_signal_col="prediction",
+            rank_and_fill=True,
         )
 
-    def test_validate_and_clean_submission_nan_predictions(self):
+    def test_clean_submission_nan_predictions(self):
         predictions = generate_submission(self.ids, "id", "prediction")
         predictions["prediction"] = np.nan
-        self.assertRaisesRegex(
-            AssertionError,
-            "submission must not contain NaNs",
-            validate_and_clean_submission_numerai,
+        clean_sub = clean_submission(
             universe=self.ids,
             submission=predictions,
+            src_id_col="id",
+            src_signal_col="prediction",
+            rank_and_fill=True,
         )
+        assert (clean_sub == 0.5).all()
 
-    def test_validate_and_clean_submission_mixed_valid_invalid_ids(self):
+    def test_clean_submission_mixed_valid_invalid_ids(self):
         mixed_ids = self.ids.tolist() + ["invalid1", "invalid2"]
         predictions = generate_submission(mixed_ids, "id", "prediction")
-        cleaned_predictions = validate_and_clean_submission_numerai(
-            universe=self.ids, submission=predictions
+        cleaned_predictions = clean_submission(
+            universe=self.ids,
+            submission=predictions,
+            src_id_col="id",
+            src_signal_col="prediction",
         )
         assert (cleaned_predictions.index == self.ids.sort_values()).all()
 
-    def test_validate_and_clean_submission_duplicate_ids(self):
+    def test_clean_submission_duplicate_ids(self):
         predictions = generate_submission(self.ids, "id", "prediction")
         predictions = pd.concat([predictions, predictions.iloc[:1]])
-        self.assertRaisesRegex(
-            AssertionError,
-            "Duplicates detected",
-            validate_and_clean_submission_numerai,
+        cleaned_predictions = clean_submission(
             universe=self.ids,
             submission=predictions,
+            src_id_col="id",
+            src_signal_col="prediction",
         )
+        assert (cleaned_predictions.index == self.ids.sort_values()).all()
 
 
 def generate_ids(id_length: int, num_rows: int) -> pd.Series:
