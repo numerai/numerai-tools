@@ -31,7 +31,6 @@ def _validate_headers(
     submission: pd.DataFrame,
     expected_id_cols: List[str],
     expected_pred_cols: List[str],
-    other_cols: Optional[List[str]] = None,
 ) -> Tuple[str, str]:
     """Validate the given submission has the right headers.
     It is recommended to use one of the following functions instead of this one:
@@ -42,7 +41,6 @@ def _validate_headers(
         submission -- pandas DataFrame of the submission
         expected_id_cols -- list of expected id columns
         expected_pred_cols -- list of expected prediction columns
-        other_cols -- optional list of other columns that can be present in the submission
 
     Return Tuple[str, str]:
         - string name of the id column
@@ -53,13 +51,6 @@ def _validate_headers(
         for ticker_col in expected_id_cols
         for signal_col in expected_pred_cols
     ]
-    if other_cols is not None:
-        expected_headers += [
-            [ticker_col, signal_col, other_col]
-            for ticker_col in expected_id_cols
-            for signal_col in expected_pred_cols
-            for other_col in other_cols
-        ]
     columns = submission.columns
     valid_headers = list(columns) in expected_headers
     assert valid_headers, (
@@ -77,13 +68,30 @@ def validate_headers_numerai(submission: pd.DataFrame) -> Tuple[str, str]:
     )
 
 
-def validate_headers_signals(submission: pd.DataFrame) -> Tuple[str, str]:
-    return _validate_headers(
+def validate_headers_signals(
+    submission: pd.DataFrame, assert_date_col: bool = False
+) -> Tuple[str, str, Optional[str]]:
+    # remove date columns if they exist and store them temporarily
+    date_col_name: Optional[str] = None
+    date_col: Optional[pd.Series] = None
+    for col in submission.columns:
+        if col in SIGNALS_ALLOWED_DATE_COLS:
+            date_col_name = col
+            date_col = submission[date_col_name].copy()
+            submission = submission.drop(columns=date_col_name, errors="ignore")
+            break
+    if assert_date_col:
+        assert (
+            date_col_name is not None
+        ), "invalid_submission_headers: submission must contain a date column"
+    ticker_col, signal_col = _validate_headers(
         submission,
         SIGNALS_ALLOWED_ID_COLS,
         SIGNALS_ALLOWED_PRED_COLS,
-        SIGNALS_ALLOWED_DATE_COLS,
     )
+    if date_col is not None:
+        submission[date_col_name] = date_col
+    return ticker_col, signal_col, date_col_name
 
 
 def validate_headers_crypto(submission: pd.DataFrame) -> Tuple[str, str]:
@@ -198,8 +206,8 @@ def validate_submission_numerai(
 
 
 def validate_submission_signals(
-    universe: pd.DataFrame, submission: pd.DataFrame
-) -> Tuple[str, str, pd.DataFrame, List[str]]:
+    universe: pd.DataFrame, submission: pd.DataFrame, assert_date_col: bool = False
+) -> Tuple[str, str, Optional[str], pd.DataFrame, List[str]]:
     """Validate the headers, ids, and values for a submission.
 
     Arguments:
@@ -216,13 +224,19 @@ def validate_submission_signals(
             "data_type column found in Signals submission. This is deprecated and support will be removed in the future. "
             "Please remove the data_type column from your Signals submission."
         )
-        submission = submission.drop(columns=["data_type"], errors="ignore")
-    ticker_col, signal_col = validate_headers_signals(submission)
+        submission.drop(
+            columns=["data_type"],
+            errors="ignore",
+            inplace=True,
+        )
+    ticker_col, signal_col, date_col = validate_headers_signals(
+        submission, assert_date_col
+    )
     filtered_sub, invalid_tickers = validate_ids_signals(
         universe[ticker_col], submission, ticker_col
     )
     validate_values(filtered_sub, signal_col)
-    return ticker_col, signal_col, filtered_sub, invalid_tickers
+    return ticker_col, signal_col, date_col, filtered_sub, invalid_tickers
 
 
 def validate_submission_crypto(
@@ -238,7 +252,6 @@ def validate_submission_crypto(
         Tuple[str, str, pd.DataFrame, List[str]] - the validated ticker column, signal column,
                                                    filtered submission, and list of invalid tickers
     """
-    print(universe)
     ticker_col, signal_col = validate_headers_crypto(submission)
     filtered_sub, invalid_tickers = validate_ids_crypto(
         universe[ticker_col], submission, ticker_col

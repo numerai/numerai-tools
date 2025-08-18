@@ -66,9 +66,6 @@ def turnover(
     Arguments:
         s1: pd.Series - the first series to compare
         s2: pd.Series - the second series to compare
-        top_bottom: Optional[int] - the number of top and bottom predictions to use
-                                    when calculating the correlation. Results in
-                                    2*top_bottom predictions.
 
     Returns:
         float - the turnover between the two series
@@ -110,6 +107,7 @@ def calculate_max_churn_and_turnover(
     (
         curr_ticker_col,
         curr_signal_col,
+        _,
         curr_sub,
         _,
     ) = validate_submission_signals(
@@ -126,7 +124,10 @@ def calculate_max_churn_and_turnover(
     churn_stats = []
     turnover_stats = []
     neutralized_weights = generate_neutralized_weights(
-        curr_sub_vector.to_frame(), curr_neutralizer, curr_weight
+        curr_sub_vector.to_frame(),
+        curr_neutralizer,
+        curr_weight,
+        center_and_normalize=True,
     )
     for datestamp in prev_week_subs:
         prev_sub = prev_week_subs[datestamp]
@@ -135,6 +136,7 @@ def calculate_max_churn_and_turnover(
         (
             prev_ticker_col,
             prev_signal_col,
+            _,
             prev_sub,
             _,
         ) = validate_submission_signals(
@@ -167,7 +169,10 @@ def calculate_max_churn_and_turnover(
             curr_ticker_col,
         ).set_index(curr_ticker_col)[prev_weight.name]
         prev_neutralized_weights = generate_neutralized_weights(
-            filtered_prev_sub.to_frame(), prev_neutralizer, prev_weight
+            filtered_prev_sub.to_frame(),
+            prev_neutralizer,
+            prev_weight,
+            center_and_normalize=True,
         )
         try:
             churn_val = abs(churn(curr_sub_vector, filtered_prev_sub))

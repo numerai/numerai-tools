@@ -131,7 +131,7 @@ class TestSubmissions(unittest.TestCase):
 
     def test_validate_headers_signals(self):
         for sub in self.signals_subs:
-            assert validate_headers_signals(sub) == tuple(sub.columns)
+            assert validate_headers_signals(sub)[:2] == tuple(sub.columns)
 
     def test_validate_headers_signals_wrong_name(self):
         for sub in self.signals_subs:
@@ -389,6 +389,7 @@ class TestSubmissions(unittest.TestCase):
         (
             ticker_col,
             signal_col,
+            _,
             filtered_sub,
             invalid_tickers,
         ) = validate_submission_signals(ids.reset_index(), int_sub)
@@ -412,6 +413,7 @@ class TestSubmissions(unittest.TestCase):
             (
                 ticker_col,
                 signal_col,
+                _,
                 filtered_sub,
                 invalid_tickers,
             ) = validate_submission_signals(ids.reset_index(), fake_sub)
