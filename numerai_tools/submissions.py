@@ -78,7 +78,11 @@ def validate_headers_signals(
         if col in SIGNALS_ALLOWED_DATE_COLS:
             date_col_name = col
             date_col = submission[date_col_name].copy()
-            submission = submission.drop(columns=date_col_name, errors="ignore")
+            submission.drop(
+                columns=date_col_name,
+                errors="ignore",
+                inplace=True,
+            )
             break
     if assert_date_col:
         assert (
@@ -89,7 +93,7 @@ def validate_headers_signals(
         SIGNALS_ALLOWED_ID_COLS,
         SIGNALS_ALLOWED_PRED_COLS,
     )
-    if date_col is not None:
+    if assert_date_col:
         submission[date_col_name] = date_col
     return ticker_col, signal_col, date_col_name
 

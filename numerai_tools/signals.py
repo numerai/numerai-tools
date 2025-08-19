@@ -128,7 +128,7 @@ def calculate_max_churn_and_turnover(
         curr_neutralizer,
         curr_weight,
         center_and_normalize=True,
-    )
+    )[curr_sub_vector.name]
     for datestamp in prev_week_subs:
         prev_sub = prev_week_subs[datestamp]
         prev_neutralizer = prev_neutralizers[datestamp]
@@ -161,19 +161,24 @@ def calculate_max_churn_and_turnover(
             )
             .set_index(curr_ticker_col)
             .filter(like="neutralizer_")
+            .dropna()
         )
-        prev_weight = remap_ids(
-            prev_weight.reset_index(),
-            universe,
-            str(prev_weight.index.name),
-            curr_ticker_col,
-        ).set_index(curr_ticker_col)[prev_weight.name]
+        prev_weight = (
+            remap_ids(
+                prev_weight.reset_index(),
+                universe,
+                str(prev_weight.index.name),
+                curr_ticker_col,
+            )
+            .set_index(curr_ticker_col)[prev_weight.name]
+            .dropna()
+        )
         prev_neutralized_weights = generate_neutralized_weights(
             filtered_prev_sub.to_frame(),
             prev_neutralizer,
             prev_weight,
             center_and_normalize=True,
-        )
+        )[filtered_prev_sub.name]
         try:
             churn_val = abs(churn(curr_sub_vector, filtered_prev_sub))
         except AssertionError as e:

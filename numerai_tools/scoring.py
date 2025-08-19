@@ -560,7 +560,7 @@ def generate_neutralized_weights(
     neutralizers: pd.DataFrame,
     sample_weights: pd.Series,
     center_and_normalize: bool = False,
-) -> pd.Series:
+) -> pd.DataFrame:
     assert not predictions.isna().any().any(), "Predictions contain NaNs"
     assert not neutralizers.isna().any().any(), "Normalization factors contain NaNs"
     assert not sample_weights.isna().any(), "Weights contain NaNs"
