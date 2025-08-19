@@ -9,7 +9,6 @@ from numerai_tools.scoring import (
 from numerai_tools.submissions import (
     validate_submission_signals,
     clean_submission,
-    remap_ids,
 )
 
 import pandas as pd
@@ -76,47 +75,47 @@ def turnover(
 
 
 def calculate_max_churn_and_turnover(
-    curr_sub: pd.DataFrame,
+    curr_sub: pd.Series,
     curr_neutralizer: pd.DataFrame,
-    curr_weight: pd.Series,
-    prev_week_subs: dict[str, pd.DataFrame],
+    curr_sample_weight: pd.Series,
+    prev_subs: dict[str, pd.Series],
     prev_neutralizers: dict[str, pd.DataFrame],
     prev_sample_weights: dict[str, pd.Series],
-    universe: pd.DataFrame,
-    curr_signal_col: str,
-    curr_ticker_col: str,
 ) -> Tuple[float, float]:
     """Calculate the maximum churn and turnover with respect to previous submissions.
+    This function iterates over previous submissions and calculates churn and turnover
+    for each submission against the current submission. It expects all data to be
+    indexed on the same type tickers/IDs (e.g. all numerai_ticker, or all composite_figi, or all etc.) .
 
     Arguments:
-        curr_sub -- the current submission
-        curr_neutralizer -- the neutralizer DataFrame for the current submission
-        curr_weight -- the sample weights Series for the current submission
-        prev_week_subs -- a dictionary of datestamps to submissions
-        prev_neutralizers -- a dictionary of datestamps to neutralizers
-        prev_sample_weights -- a dictionary of datestamps to sample weights
-        universe -- the universe DataFrame for the current era
-        curr_signal_col -- the column name for signal in the current submission
-        curr_ticker_col -- the column name for tickers in the current submission
-
+        curr_sub: pd.Series - the current submission as a Series indexed on tickers/ids
+        curr_neutralizer: pd.DataFrame - the neutralizer DataFrame for the current submission indexed on numerai_ticker
+        curr_sample_weight: pd.Series - the sample weights Series for the current submission indexed on numerai_ticker
+        prev_subs: dict[str, pd.DataFrame] - a dictionary of datestamps to submissions, where each submission is a DataFrame
+                     with 2 columns: a ticker/id column and a signal/prediction column. To calculate churn
+                     and turnover for a live submission, use the most recent 5 submissions. For diagnostics,
+                     just provide the previous era.
+        prev_neutralizers: dict[str, pd.DataFrame] - a dictionary of datestamps to neutralizers DataFrames where each neutralizers
+                             DataFrame is indexed on the same ticker column as the current submission
+        prev_sample_weights: dict[str, pd.Series] - a dictionary of datestamps to sample weights where each sample weights
+                             Series is indexed on the same ticker column as the current submission
     Returns:
         prev_week_max_churn -- the maximum churn from previous submissions
         prev_week_max_turnover -- the maximum turnover from previous submissions
     """
-    universe = universe.reset_index()
     (
         curr_ticker_col,
         curr_signal_col,
         _,
-        curr_sub,
+        curr_sub_df,
         _,
     ) = validate_submission_signals(
-        universe=universe,
-        submission=curr_sub,
+        universe=curr_sample_weight.index.to_frame(),
+        submission=curr_sub.reset_index(),
     )
-    curr_sub_vector = clean_submission(
-        universe=universe,
-        submission=curr_sub,
+    curr_sub = clean_submission(
+        universe=curr_sample_weight.index.to_frame(),
+        submission=curr_sub_df,
         src_id_col=curr_ticker_col,
         src_signal_col=curr_signal_col,
         rank_and_fill=True,
@@ -124,63 +123,42 @@ def calculate_max_churn_and_turnover(
     churn_stats = []
     turnover_stats = []
     neutralized_weights = generate_neutralized_weights(
-        curr_sub_vector.to_frame(),
+        curr_sub.to_frame(),
         curr_neutralizer,
-        curr_weight,
+        curr_sample_weight,
         center_and_normalize=True,
-    )[curr_sub_vector.name]
-    for datestamp in prev_week_subs:
-        prev_sub = prev_week_subs[datestamp]
+    )[curr_sub.name]
+    for datestamp in prev_subs:
+        prev_sub = prev_subs[datestamp]
         prev_neutralizer = prev_neutralizers[datestamp]
-        prev_weight = prev_sample_weights[datestamp]
+        prev_sample_weight = prev_sample_weights[datestamp]
         (
             prev_ticker_col,
             prev_signal_col,
             _,
-            prev_sub,
+            prev_sub_df,
             _,
         ) = validate_submission_signals(
-            universe=universe,
-            submission=prev_sub,
+            universe=prev_sample_weight.index.to_frame(),
+            submission=prev_sub.reset_index(),
         )
-        filtered_prev_sub = clean_submission(
-            universe=universe,
-            submission=prev_sub,
+        prev_sub = clean_submission(
+            universe=prev_sample_weight.index.to_frame(),
+            submission=prev_sub_df,
             src_id_col=prev_ticker_col,
             src_signal_col=prev_signal_col,
             dst_id_col=curr_ticker_col,
             dst_signal_col=curr_signal_col,
             rank_and_fill=True,
         )
-        prev_neutralizer = (
-            remap_ids(
-                prev_neutralizer.reset_index(),
-                universe,
-                str(prev_neutralizer.index.name),
-                curr_ticker_col,
-            )
-            .set_index(curr_ticker_col)
-            .filter(like="neutralizer_")
-            .dropna()
-        )
-        prev_weight = (
-            remap_ids(
-                prev_weight.reset_index(),
-                universe,
-                str(prev_weight.index.name),
-                curr_ticker_col,
-            )
-            .set_index(curr_ticker_col)[prev_weight.name]
-            .dropna()
-        )
         prev_neutralized_weights = generate_neutralized_weights(
-            filtered_prev_sub.to_frame(),
+            prev_sub.to_frame(),
             prev_neutralizer,
-            prev_weight,
+            prev_sample_weight,
             center_and_normalize=True,
-        )[filtered_prev_sub.name]
+        )[prev_sub.name]
         try:
-            churn_val = abs(churn(curr_sub_vector, filtered_prev_sub))
+            churn_val = abs(churn(curr_sub, prev_sub))
         except AssertionError as e:
             if "does not have enough overlapping ids" in str(e):
                 continue

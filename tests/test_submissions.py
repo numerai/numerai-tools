@@ -29,6 +29,7 @@ from numerai_tools.submissions import (
     validate_submission_signals,
     validate_submission_crypto,
     clean_submission,
+    remap_ids,
 )
 
 
@@ -373,7 +374,7 @@ class TestSubmissions(unittest.TestCase):
             invalid_tickers,
         ) = validate_submission_numerai(self.ids, int_sub)
         clean_sub = clean_submission(
-            universe=self.ids,
+            universe=self.ids.to_frame(),
             submission=filtered_sub,
             src_id_col=ticker_col,
             src_signal_col=signal_col,
@@ -463,7 +464,7 @@ class TestSubmissions(unittest.TestCase):
     def test_clean_submission_rank_and_fill(self):
         int_sub = generate_submission(self.ids, "id", "prediction")
         clean_sub = clean_submission(
-            universe=self.ids,
+            universe=self.ids.to_frame(),
             submission=int_sub,
             src_id_col="id",
             src_signal_col="prediction",
@@ -478,7 +479,7 @@ class TestSubmissions(unittest.TestCase):
             AssertionError,
             "predictions must not be empty",
             clean_submission,
-            universe=self.ids,
+            universe=self.ids.to_frame(),
             submission=empty_predictions,
             src_id_col="id",
             src_signal_col="prediction",
@@ -489,7 +490,7 @@ class TestSubmissions(unittest.TestCase):
         predictions = generate_submission(self.ids, "id", "prediction")
         predictions["prediction"] = np.nan
         clean_sub = clean_submission(
-            universe=self.ids,
+            universe=self.ids.to_frame(),
             submission=predictions,
             src_id_col="id",
             src_signal_col="prediction",
@@ -501,7 +502,7 @@ class TestSubmissions(unittest.TestCase):
         mixed_ids = self.ids.tolist() + ["invalid1", "invalid2"]
         predictions = generate_submission(mixed_ids, "id", "prediction")
         cleaned_predictions = clean_submission(
-            universe=self.ids,
+            universe=self.ids.to_frame(),
             submission=predictions,
             src_id_col="id",
             src_signal_col="prediction",
@@ -512,15 +513,42 @@ class TestSubmissions(unittest.TestCase):
         predictions = generate_submission(self.ids, "id", "prediction")
         predictions = pd.concat([predictions, predictions.iloc[:1]])
         cleaned_predictions = clean_submission(
-            universe=self.ids,
+            universe=self.ids.to_frame(),
             submission=predictions,
             src_id_col="id",
             src_signal_col="prediction",
         )
         assert (cleaned_predictions.index == self.ids.sort_values()).all()
 
+    def test_remap_ids(self):
+        ids = generate_ids(9, 100, "id")
+        new_ids = generate_ids(9, 100, "ticker")
+        id_map = pd.concat([ids, new_ids], axis=1)
+        sub = generate_submission(ids, "id", "signal")
+        remapped_sub = remap_ids(
+            sub,
+            id_map,
+            src_id_col="id",
+            dst_id_col="ticker",
+        )
+        assert (remapped_sub["ticker"] == new_ids.sort_values()).all().all()
 
-def generate_ids(id_length: int, num_rows: int) -> pd.Series:
+    def test_remap_ids_same_name(self):
+        ids = generate_ids(9, 100, "id")
+        new_ids = generate_ids(9, 100, "id")
+        sub = generate_submission(ids, "id", "signal")
+        id_map = ids.to_frame()
+        id_map["id"] = new_ids
+        remapped_sub = remap_ids(
+            sub,
+            id_map,
+            src_id_col="id",
+            dst_id_col="id",
+        )
+        assert (remapped_sub["id"] == new_ids.sort_values()).all().all()
+
+
+def generate_ids(id_length: int, num_rows: int, id_name: str = "id") -> pd.Series:
     """Generates a given number of unique ascii-valued strings of a given length.
 
     Arguments:
@@ -534,7 +562,7 @@ def generate_ids(id_length: int, num_rows: int) -> pd.Series:
     while len(values) < num_rows:
         new_value = "".join(random.choices(string.ascii_uppercase, k=id_length))
         values.add(new_value)
-    return pd.Series(list(values), name="id")
+    return pd.Series(list(values), name=id_name)
 
 
 def generate_submission(

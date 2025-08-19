@@ -228,11 +228,7 @@ def validate_submission_signals(
             "data_type column found in Signals submission. This is deprecated and support will be removed in the future. "
             "Please remove the data_type column from your Signals submission."
         )
-        submission.drop(
-            columns=["data_type"],
-            errors="ignore",
-            inplace=True,
-        )
+    submission.drop(columns=["data_type"], errors="ignore", inplace=True)
     ticker_col, signal_col, date_col = validate_headers_signals(
         submission, assert_date_col
     )
@@ -266,7 +262,7 @@ def validate_submission_crypto(
 
 def remap_ids(
     data: pd.DataFrame,
-    ticker_map: pd.Series | pd.DataFrame,
+    ticker_map: pd.DataFrame,
     src_id_col: str,
     dst_id_col: str,
 ) -> pd.DataFrame:
@@ -277,25 +273,25 @@ def remap_ids(
 
     Arguments:
         data: pd.DataFrame - the data to remap
-        ticker_map: pd.Series | pd.DataFrame - the mapping of source ids to destination ids
+        ticker_map: pd.DataFrame - the mapping of source ids to destination ids
         src_id_col: str - the name of the source ids column in the data
         dst_id_col: str - the name of the destination ids column in the ticker map
     """
     # first, index the universe and data on the source ids
-    indexed_map = ticker_map.reset_index().set_index(src_id_col)
+    indexed_map = ticker_map.set_index(src_id_col, drop=False)
     indexed_data = data.set_index(src_id_col)
     return (
         # then, join the universe and data
         indexed_map.join(indexed_data)
         # get just the destination ids and prediction columns
-        .reset_index()[[dst_id_col, *indexed_data.columns]]
+        .reset_index(drop=True)[[dst_id_col, *indexed_data.columns]]
         # finally, sort by the destination ticker column
         .sort_values(dst_id_col)
     )
 
 
 def clean_submission(
-    universe: pd.Series | pd.DataFrame,
+    universe: pd.DataFrame,
     submission: pd.DataFrame,
     src_id_col: str,
     src_signal_col: str,
