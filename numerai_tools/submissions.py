@@ -115,14 +115,18 @@ def validate_values(submission: pd.DataFrame, prediction_col: str) -> None:
         submission -- pandas DataFrame of the submission
         prediction_col -- the string name of the prediction column returned by validate_headers
     """
+    preds = submission[prediction_col]
     assert (
-        submission[prediction_col].isna().sum() == 0
+        preds.isna().sum() == 0
     ), "invalid_submission_values: submission must not contain NaNs"
     assert (
-        submission[prediction_col].between(0, 1).all()
+        preds.between(0, 1).all()
+        or (np.isclose(preds.min(), 0).all() and preds.le(1).all())
+        or (preds.ge(0).all() and np.isclose(preds.max(), 1).all())
+        or (np.isclose(preds.min(), 0).all() and np.isclose(preds.max(), 1).all())
     ), "invalid_submission_values: values must be between 0 and 1 exclusive"
     assert not np.isclose(
-        0, submission[prediction_col].std()
+        0, preds.std()
     ), "invalid_submission_values: submission must have non-zero standard deviation"
 
 
