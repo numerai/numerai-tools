@@ -324,10 +324,6 @@ def clean_submission(
         pd.Series - the cleaned, properly indexed submission
     """
     assert len(universe) > 0, "universe must not be empty"
-    if isinstance(universe, pd.DataFrame):
-        assert universe.isna().sum().sum() == 0, "universe must not contain NaNs"
-    else:
-        assert universe.isna().sum() == 0, "universe must not contain NaNs"
     assert len(submission) > 0, "predictions must not be empty"
 
     if dst_id_col is None:
