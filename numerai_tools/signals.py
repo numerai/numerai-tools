@@ -82,23 +82,48 @@ def calculate_max_churn_and_turnover(
     prev_neutralizers: dict[str, pd.DataFrame],
     prev_sample_weights: dict[str, pd.Series],
 ) -> Tuple[float, float]:
-    """Calculate the maximum churn and turnover with respect to previous submissions.
-    This function iterates over previous submissions and calculates churn and turnover
-    for each submission against the current submission. It expects all data to be
-    indexed on the same type tickers/IDs (e.g. all numerai_ticker, or all composite_figi, or all etc.) .
+    """Calculate the maximum churn and turnover of the current submission with respect to previous submissions.
+    This function iterates over previous submissions and calculates churn and turnover for each submission
+    against the current submission. It expects the following:
+
+        - all submissions, neutralizers, and sample weights are indexed on the same type of tickers/IDs
+          (e.g. all numerai_ticker, or all composite_figi, or all etc.)
+
+        - neutralizers and sample weights cover the full universe of their respective eras. This means you
+          should avoid removing rows from neutralizers or sample weights before passing them to this function.
+
+    In a live submission environment your submissions are joined on their respective full universes, ranked,
+    and then any NaNs are filled with 0.5 before calculating churn and turnover. So, if you provide filtered
+    neutralizers or sample weights, your locally calculated churn and turnover may not match the live value.
 
     Arguments:
-        curr_sub: pd.Series - the current submission as a Series indexed on tickers/ids
-        curr_neutralizer: pd.DataFrame - the neutralizer DataFrame for the current submission indexed on numerai_ticker
-        curr_sample_weight: pd.Series - the sample weights Series for the current submission indexed on numerai_ticker
-        prev_subs: dict[str, pd.DataFrame] - a dictionary of datestamps to submissions, where each submission is a DataFrame
-                     with 2 columns: a ticker/id column and a signal/prediction column. To calculate churn
-                     and turnover for a live submission, use the most recent 5 submissions. For diagnostics,
-                     just provide the previous era.
-        prev_neutralizers: dict[str, pd.DataFrame] - a dictionary of datestamps to neutralizers DataFrames where each neutralizers
-                             DataFrame is indexed on the same ticker column as the current submission
-        prev_sample_weights: dict[str, pd.Series] - a dictionary of datestamps to sample weights where each sample weights
-                             Series is indexed on the same ticker column as the current submission
+        curr_sub: pd.Series - current-era submission indexed on tickers/ids
+
+        curr_neutralizer: pd.DataFrame
+            - current-era neutralizers indexed on the same type of tickers/ids.
+              We expect these to cover the full universe for the current era.
+
+        curr_sample_weight: pd.Series
+            - current-era sample weights indexed on the same type of tickers/ids.
+              We expect these to cover the full universe for the current era.
+
+        prev_subs: dict[str, pd.Series]
+            - a dictionary mapping datestamps to submissions, where each submission is a
+              Series indexed on the same type of tickers/ids as the current
+              submission. To calculate churn and turnover for a live submission,
+              use the most recent 5 submissions. For diagnostics, just provide the
+              last 1 era.
+
+        prev_neutralizers: dict[str, pd.DataFrame]
+            - a dictionary mapping datestamps to neutralizers DataFrames where each neutralizers
+              DataFrame is indexed on the same type of tickers/ids as the current submission.
+              We expect each of these to cover the full universe of their respective eras.
+
+        prev_sample_weights: dict[str, pd.Series]
+            - a dictionary mapping datestamps to sample weights where each sample weights
+              Series is indexed on the same type of tickers/ids as the current submission.
+              We expect each of these to cover the full universe of their respective eras.
+
     Returns:
         prev_week_max_churn -- the maximum churn from previous submissions
         prev_week_max_turnover -- the maximum turnover from previous submissions
