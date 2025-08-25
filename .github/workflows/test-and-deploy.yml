@@ -7,8 +7,8 @@ on:
 concurrency: deploy-numerai-tools-${{ github.ref }}
 
 jobs:
-  test-and-deploy-numerai-tools:
-    name: Test & Deploy Numerai Tools
+  test-numerai-tools:
+    name: Test Numerai Tools
     strategy:
       matrix:
         python-version: [3.11, 3.12, 3.13]
@@ -41,9 +41,32 @@ jobs:
       - name: Test
         run: poetry run pytest
 
+  deploy:
+    name: Deploy Numerai Tools
+    needs: test-numerai-tools
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: false
+      
+      - name: Install dependencies
+        run: poetry install
+
       - name: Deploy
         id: deploy
-        if: github.ref == 'refs/heads/master'
         run: |
           poetry config pypi-token.pypi ${{ secrets.PYPI_API_KEY }}
           poetry publish --build
