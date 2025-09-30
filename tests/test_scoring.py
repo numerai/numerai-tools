@@ -284,10 +284,20 @@ class TestScoring(unittest.TestCase):
         assert not np.isnan(neutralized).any().any()
 
     def test_numerai_corr_doesnt_clobber_targets(self):
-        s = [x / 4 for x in range(5)]
-        df = pd.DataFrame({"target": s, "prediction": reversed(s)})
+        s = [x / 100 for x in range(100)]
+        df = pd.DataFrame({"target": s, "prediction": s})
         numerai_corr(df[["prediction"]], df["target"])
         assert pd.Series(s).equals(df["target"]), f"{s} != {list(df['target'].values)}"
+
+    def test_numerai_corr_target_pow15_option(self):
+        # ensure the target_pow15 argument to numerai_corr operates correctly
+        s = [x / 100 for x in range(100)]
+        df = pd.DataFrame({"target": s, "prediction": s})
+        corr_w_pow = numerai_corr(df[["prediction"]], df["target"], target_pow15=True)
+        corr_wo_pow = numerai_corr(df[["prediction"]], df["target"], target_pow15=False)
+        # we would expect the correlation to be higher when using the pow15 transformation
+        # since the predictions are rank-gauss-pow1.5 transformed in numerai_corr
+        assert abs(corr_w_pow[0]) > abs(corr_wo_pow[0])
 
     def test_filter_top_bottom(self):
         self.assertRaises(

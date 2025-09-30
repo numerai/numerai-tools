@@ -468,6 +468,7 @@ def numerai_corr(
     targets: pd.Series,
     max_filtered_index_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
     top_bottom: Optional[int] = None,
+    target_pow15: bool = True,
 ) -> pd.Series:
     """Calculates the canonical Numerai correlation.
     1. Re-center the target on 0
@@ -484,6 +485,8 @@ def numerai_corr(
         top_bottom: Optional[int] - the number of top and bottom predictions to use
                                     when calculating the correlation. Results in
                                     2*top_bottom predictions.
+        target_pow15: bool - whether to raise the targets to the 1.5 power, defaults to True.
+                             Set to False if you are passing in returns as the targets.
 
     Returns:
         pd.Series - the resulting correlation scores for each column in predictions
@@ -493,7 +496,8 @@ def numerai_corr(
         targets, predictions, max_filtered_index_ratio
     )
     predictions = tie_kept_rank__gaussianize__pow_1_5(predictions)
-    targets = power(targets.to_frame(), 1.5)[targets.name]
+    if target_pow15:
+        targets = power(targets.to_frame(), 1.5)[targets.name]
     scores = predictions.apply(
         lambda sub: pearson_correlation(targets, sub, top_bottom)
     )
