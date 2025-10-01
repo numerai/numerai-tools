@@ -126,7 +126,7 @@ def numerai_corr(
                                     when calculating the correlation. Results in
                                     2*top_bottom predictions.
         target_pow15: bool - whether or not to exponentiate the target to 1.5, this
-                             exentuates the tails to ensure models are performing well at
+                             accentuates the tails to ensure models are performing well at
                              the extremes (where most performance comes from). Defaults to
                              true. Set to False when using returns as the "target".
 
