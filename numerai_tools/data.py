@@ -122,11 +122,9 @@ def quantile_bin(
         # calculate quantile thresholds
         q = s.quantile(quantiles)
 
-        # assign bins according to quantiles
-        s.loc[s <= q[quantiles[0]]] = bins[0]
-        for i in range(1, len(bins) - 1):
-            s.loc[(s > q[quantiles[i - 1]]) & (s <= q[quantiles[i]])] = bins[i]
-        s.loc[s >= q[quantiles[-1]]] = bins[-1]
+        # assign bins according to quantiles using pd.cut for mutually exclusive bins
+        bin_edges = [-np.inf] + [q[q_idx] for q_idx in quantiles] + [np.inf]
+        s = pd.cut(s, bins=bin_edges, labels=bins, include_lowest=True).astype(float)
 
         binned[col] = s.astype(float)
 
