@@ -1,11 +1,8 @@
 from typing import Tuple, Optional
 
-from numerai_tools.scoring import (
-    filter_sort_index,
-    filter_sort_top_bottom,
-    spearman_correlation,
-    generate_neutralized_weights,
-)
+from numerai_tools.indexing import filter_sort_index, filter_sort_top_bottom
+from numerai_tools.math import spearman_correlation
+from numerai_tools.scoring import generate_neutralized_weights
 from numerai_tools.submissions import (
     validate_submission_signals,
     clean_submission,
