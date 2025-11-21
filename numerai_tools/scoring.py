@@ -637,12 +637,7 @@ def meta_portfolio_contribution(
     t = cast(np.ndarray, targets.values)
     swp = w @ s
     swp = swp - swp.mean()
-    l1_norm = np.sum(np.abs(swp))
-    l1_norm_squared = np.power(l1_norm, 2)
-    swp_sign = np.sign(swp)
-    swp_alpha = np.dot(swp, t)
-    directional_gradient = l1_norm * t - swp_sign * swp_alpha
-    jacobian_vector_product = directional_gradient.reshape(-1, 1) / l1_norm_squared
-    centered_jacobian = jacobian_vector_product - jacobian_vector_product.mean()
-    mpc = (w.T @ centered_jacobian).squeeze()
+    l2_norm = np.sqrt(np.sum(swp**2))
+    residualized_weights = orthogonalize(w, swp)
+    mpc = (residualized_weights.T @ t).squeeze() / l2_norm
     return pd.Series(mpc, index=stakes.index)
