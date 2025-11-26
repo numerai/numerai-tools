@@ -614,12 +614,14 @@ def meta_portfolio_contribution(
     sample_weights: pd.Series,
     targets: pd.Series,
 ) -> pd.Series:
-    """Calculates the "meta portfolio" score:
-        - rank, normalize, and power each signal
-        - convert each signal into neutralized weights
-        - generate the stake-weighted portfolio
-        - calculate the gradient of the portfolio w.r.t. the stakes
-        - multiplying the weights by the targets
+    """Calculates the "meta portfolio" gradient w.r.t. stakes:
+    - rank, normalize, and power each signal
+    - convert each signal into neutralized weights
+    - center weights across samples (explicit W_c = C W)
+    - generate the stake-weighted portfolio
+    - calculate the gradient of the portfolio w.r.t. the stakes
+    - multiply by the (centered) targets
+
     Arguments:
         predictions: pd.DataFrame - the predictions to evaluate
         stakes: pd.Series - the stakes to use as weights
@@ -627,17 +629,41 @@ def meta_portfolio_contribution(
         sample_weights: pd.Series - the universe sampling weights
         targets: pd.Series - the live targets to evaluate against
     """
-    targets = center(targets)
+    # Align predictions and targets on the same index / universe
     predictions, targets = filter_sort_index(predictions, targets)
+
+    # Center targets in sample space: t_c = C t
+    targets = center(targets)
+
+    # Normalize stakes to sum to 1
     stake_weights = weight_normalize(stakes.fillna(0))
     assert np.isclose(stake_weights.sum(), 1), "Stakes must sum to 1"
+
+    # Generate neutralized weights W(predictions, neutralizers, sample_weights)
     weights = generate_neutralized_weights(predictions, neutralizers, sample_weights)
-    w = cast(np.ndarray, weights[stakes.index].values)
-    s = cast(np.ndarray, stake_weights.values)
-    t = cast(np.ndarray, targets.values)
-    swp = w @ s
-    swp = swp - swp.mean()
-    l2_norm = np.sqrt(np.sum(swp**2))
-    residualized_weights = orthogonalize(w, swp)
-    mpc = (residualized_weights.T @ t).squeeze() / l2_norm
+
+    # Extract aligned matrices/vectors
+    w = cast(np.ndarray, weights[stakes.index].values)  # W ∈ R^{N×K}
+    s = cast(np.ndarray, stake_weights.values)  # s ∈ R^K
+    t = cast(np.ndarray, targets.values)  # t_c ∈ R^N (already centered)
+
+    # Explicit centering of weights across samples:
+    # W_c = C W = W - 1 μ^T, where μ is the column-wise mean of W
+    w_centered = w - w.mean(axis=0, keepdims=True)  # W_c
+
+    # Centered prediction vector v = W_c s
+    v = w_centered @ s  # v ∈ R^N, already mean ~ 0
+    # Optionally re-center to remove numerical drift
+    v = v - v.mean()
+
+    # Its L2 norm r = ||v||
+    l2_norm = np.sqrt(np.sum(v**2))
+
+    # Residualize W_c against v:
+    # residualized_w ≈ R_v W_c = (I - v v^T / ||v||^2) W_c
+    residualized_w = orthogonalize(w_centered, v)
+
+    # Gradient: ∇_s α = (1 / ||v||) (R_v W_c)^T t_c
+    mpc = (residualized_w.T @ t).squeeze() / l2_norm
+
     return pd.Series(mpc, index=stakes.index)
