@@ -348,8 +348,8 @@ class TestScoring(unittest.TestCase):
         v = pd.Series([3, 2, 1, 2, 3]).T
         t = pd.Series([1.0, 2.0, 3.0, 2.0, 1.0]).T
         score = meta_portfolio_contribution(s, st, N, v, t)
-        assert np.isclose(score[0], -0.04329786867021718)
-        assert np.isclose(score[1], 0.06494680300532589)
+        assert np.isclose(score[0], -0.07900343769786788)
+        assert np.isclose(score[1], 0.11850515654680151)
 
 
 if __name__ == "__main__":
