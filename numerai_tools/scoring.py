@@ -665,5 +665,5 @@ def meta_portfolio_contribution(
 
     # Gradient: ∇_s α = (1 / ||v||) (R_v W_c)^T t_c
     mpc = (residualized_w.T @ t).squeeze() / l2_norm
-
+    mpc /= 50
     return pd.Series(mpc, index=stakes.index)
