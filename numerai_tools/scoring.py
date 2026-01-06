@@ -445,6 +445,79 @@ def tie_kept_rank__gaussianize__pow_1_5(df: pd.DataFrame) -> pd.DataFrame:
     return power(gaussian(tie_kept_rank(df)), 1.5)
 
 
+def ensemble_predictions(
+    predictions: pd.DataFrame, weights: Optional[List[float]] = None
+) -> pd.Series:
+    """Ensemble multiple prediction columns into a single prediction.
+    
+    This function ensures all predictors are normalized through tie-kept ranking and 
+    gaussianization before aggregation. Supports both equal weighting (default) and 
+    custom weights. The ensemble result is then normalized using the same transformation 
+    pipeline (rank + gaussianize).
+    
+    The output is ready for further processing such as neutralization or scoring with 
+    numerai_corr.
+    
+    This approach guarantees that:
+    1. All predictions are on the same scale before ensembling
+    2. Each predictor's contribution is proportional to its weight
+    3. The output is properly normalized (mean≈0, std≈1) and ready for downstream operations
+    
+    Note: This function operates on a single time period (e.g., single era). When working
+    with multiple eras, apply this function separately to each era using groupby.
+    
+    Arguments:
+        predictions: pd.DataFrame - DataFrame where each column is a prediction to ensemble.
+                                   All columns should have the same index.
+        weights: Optional[List[float]] - Optional weights for each prediction column.
+                                        Must have same length as number of columns.
+                                        If None, uses equal weights (simple mean).
+                                        Weights will be normalized to sum to 1.
+    
+    Returns:
+        pd.Series - The ensembled prediction as a Series with the same index as input,
+                   normalized through tie-kept ranking and gaussianization.
+    
+    Example:
+        >>> # Equal weighting (simple mean)
+        >>> ensemble = df.groupby('era', group_keys=False).apply(
+        ...     lambda era_df: ensemble_predictions(era_df[pred_cols])
+        ... )
+        
+        >>> # Custom weights
+        >>> weights = [0.5, 0.3, 0.2]  # Will be normalized to sum to 1
+        >>> ensemble = df.groupby('era', group_keys=False).apply(
+        ...     lambda era_df: ensemble_predictions(era_df[pred_cols], weights)
+        ... )
+    """
+    assert isinstance(predictions, pd.DataFrame), "predictions must be a DataFrame"
+    assert len(predictions.columns) > 0, "predictions must have at least one column"
+    assert not predictions.isna().any().any(), "predictions contain NaNs"
+    
+    # Normalize each prediction to the same scale (mean≈0, std≈1)
+    normalized_preds = gaussian(tie_kept_rank(predictions))
+    
+    # Aggregate predictions
+    if weights is None:
+        # Equal weighting - simple mean
+        ensemble = normalized_preds.mean(axis=1)
+    else:
+        # Custom weights
+        assert len(weights) == len(
+            predictions.columns
+        ), f"weights length ({len(weights)}) must match number of columns ({len(predictions.columns)})"
+        # Normalize weights to sum to 1
+        weights_array = np.array(weights)
+        weights_normalized = weights_array / weights_array.sum()
+        # Weighted average using dot product
+        ensemble = normalized_preds.dot(weights_normalized)
+    
+    # Normalize the ensemble result (rank + gaussianize produces mean≈0, std≈1)
+    ensemble_normalized = gaussian(tie_kept_rank(ensemble.to_frame()))
+    
+    return ensemble_normalized.iloc[:, 0]
+
+
 def tie_kept_rank__gaussianize__neutralize__variance_normalize(
     df: pd.DataFrame, neutralizers: pd.DataFrame
 ) -> pd.DataFrame:
