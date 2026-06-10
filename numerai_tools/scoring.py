@@ -365,7 +365,8 @@ def correlation_contribution(
     else:
         # multiply target and neutralized predictions
         # this is equivalent to covariance b/c mean = 0
-        mmc = (live_targets @ neutral_preds) / len(live_targets)
+        target_values = cast(np.ndarray, live_targets.to_numpy())
+        mmc = (target_values @ neutral_preds) / len(live_targets)
     return pd.Series(mmc, index=predictions.columns)
 
 
