@@ -12,11 +12,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.11, 3.12, 3.13]
+        python-version: [3.11, 3.12, 3.13, 3.14]
         pandas-version:
           - "pandas>=2.2.2,<2.3"
           - "pandas>=2.3,<3.0"
           - "pandas>=3.0,<4.0"
+        exclude:
+          - python-version: 3.14
+            pandas-version: "pandas>=2.2.2,<2.3"
     permissions:
       id-token: write
       contents: read
@@ -39,8 +42,8 @@ jobs:
 
       - name: Select pandas version
         run: |
-          poetry run python -m pip install --upgrade "${{ matrix.pandas-version }}"
-          poetry run python -c "import pandas as pd; print(f'pandas {pd.__version__}')"
+          poetry run python -m pip install --upgrade "${{ matrix.pandas-version }}" "numpy>=2.0,<2.4"
+          poetry run python -c "import numpy as np; import pandas as pd; print(f'pandas {pd.__version__}, numpy {np.__version__}')"
       
       - name: Lint
         run: poetry run ruff check .

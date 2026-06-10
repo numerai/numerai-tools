@@ -537,8 +537,7 @@ class TestSubmissions(unittest.TestCase):
         ids = generate_ids(9, 100, "id")
         new_ids = generate_ids(9, 100, "id")
         sub = generate_submission(ids, "id", "signal")
-        id_map = ids.to_frame()
-        id_map["id"] = new_ids
+        id_map = new_ids.to_frame()
         remapped_sub = remap_ids(
             sub,
             id_map,

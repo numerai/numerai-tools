@@ -392,7 +392,10 @@ def neutralize(
     assert not neutralizers.isna().any().any(), "Neutralizers contain NaNs"
     assert len(df.index) == len(neutralizers.index), "Indices don't match"
     assert (df.index == neutralizers.index).all(), "Indices don't match"
-    df[df.columns[df.std() == 0]] = np.nan
+    zero_std_cols = df.columns[df.std() == 0]
+    if len(zero_std_cols) > 0:
+        df = df.copy()
+        df.loc[:, zero_std_cols] = np.nan
     df_arr = df.values
     neutralizer_arr = neutralizers.values
     neutralizer_arr = np.hstack(
