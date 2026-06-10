@@ -365,7 +365,8 @@ def correlation_contribution(
     else:
         # multiply target and neutralized predictions
         # this is equivalent to covariance b/c mean = 0
-        mmc = (live_targets @ neutral_preds) / len(live_targets)
+        target_values = cast(np.ndarray, live_targets.to_numpy())
+        mmc = (target_values @ neutral_preds) / len(live_targets)
     return pd.Series(mmc, index=predictions.columns)
 
 
@@ -391,7 +392,10 @@ def neutralize(
     assert not neutralizers.isna().any().any(), "Neutralizers contain NaNs"
     assert len(df.index) == len(neutralizers.index), "Indices don't match"
     assert (df.index == neutralizers.index).all(), "Indices don't match"
-    df[df.columns[df.std() == 0]] = np.nan
+    zero_std_cols = df.columns[df.std() == 0]
+    if len(zero_std_cols) > 0:
+        df = df.copy()
+        df.loc[:, zero_std_cols] = np.nan
     df_arr = df.values
     neutralizer_arr = neutralizers.values
     neutralizer_arr = np.hstack(

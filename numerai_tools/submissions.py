@@ -155,8 +155,7 @@ def _validate_ids(
         not submission[id_col].isna().any()
     ), f"invalid_submission_ids: Submission must not contain NaNs in the {id_col} column."
 
-    index_sub = submission.copy()
-    index_sub[id_col] = index_sub[id_col].astype(str)
+    index_sub = submission.assign(**{id_col: submission[id_col].astype(str)})
 
     live_ids = live_ids.astype(str)
     live_sub = index_sub[index_sub[id_col].isin(live_ids)].sort_values(id_col)

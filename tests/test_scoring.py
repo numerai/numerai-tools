@@ -297,7 +297,7 @@ class TestScoring(unittest.TestCase):
         corr_wo_pow = numerai_corr(df[["prediction"]], df["target"], target_pow15=False)
         # we would expect the correlation to be higher when using the pow15 transformation
         # since the predictions are rank-gauss-pow1.5 transformed in numerai_corr
-        assert abs(corr_w_pow[0]) > abs(corr_wo_pow[0])
+        assert abs(corr_w_pow.iloc[0]) > abs(corr_wo_pow.iloc[0])
 
     def test_filter_top_bottom(self):
         self.assertRaises(

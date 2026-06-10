@@ -535,17 +535,16 @@ class TestSubmissions(unittest.TestCase):
 
     def test_remap_ids_same_name(self):
         ids = generate_ids(9, 100, "id")
-        new_ids = generate_ids(9, 100, "id")
-        sub = generate_submission(ids, "id", "signal")
+        sub = generate_submission(ids, "id", "signal", random_vals=False)
         id_map = ids.to_frame()
-        id_map["id"] = new_ids
         remapped_sub = remap_ids(
             sub,
             id_map,
             src_id_col="id",
             dst_id_col="id",
         )
-        assert (remapped_sub["id"] == new_ids.sort_values()).all().all()
+        expected_sub = sub.sort_values("id").reset_index(drop=True)
+        pd.testing.assert_frame_equal(remapped_sub.reset_index(drop=True), expected_sub)
 
 
 def generate_ids(id_length: int, num_rows: int, id_name: str = "id") -> pd.Series:

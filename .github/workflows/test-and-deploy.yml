@@ -8,10 +8,18 @@ concurrency: deploy-numerai-tools-${{ github.ref }}
 
 jobs:
   test-numerai-tools:
-    name: Test Numerai Tools
+    name: Test Numerai Tools (${{ matrix.python-version }}, ${{ matrix.pandas-version }})
     strategy:
+      fail-fast: false
       matrix:
-        python-version: [3.11, 3.12, 3.13]
+        python-version: [3.11, 3.12, 3.13, 3.14]
+        pandas-version:
+          - "pandas>=2.2.2,<2.3"
+          - "pandas>=2.3,<3.0"
+          - "pandas>=3.0,<4.0"
+        exclude:
+          - python-version: 3.14
+            pandas-version: "pandas>=2.2.2,<2.3"
     permissions:
       id-token: write
       contents: read
@@ -29,8 +37,16 @@ jobs:
           virtualenvs-create: true
           virtualenvs-in-project: false
       
+      - name: Select pandas version
+        run: |
+          poetry add --lock "${{ matrix.pandas-version }}" "numpy>=2.0,<2.4"
+
       - name: Install dependencies
         run: poetry install --with dev
+
+      - name: Show dependency versions
+        run: |
+          poetry run python -c "import numpy as np; import pandas as pd; print(f'pandas {pd.__version__}, numpy {np.__version__}')"
       
       - name: Lint
         run: poetry run ruff check .
@@ -39,7 +55,7 @@ jobs:
         run: poetry run mypy .
 
       - name: Test
-        run: poetry run pytest
+        run: poetry run pytest -W error::FutureWarning
 
   deploy:
     name: Deploy Numerai Tools
