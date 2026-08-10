@@ -81,6 +81,7 @@ def calculate_max_churn_and_turnover(
     prev_subs: dict[str, pd.Series],
     prev_neutralizers: dict[str, pd.DataFrame],
     prev_sample_weights: dict[str, pd.Series],
+    power: float = 1.5,
 ) -> Tuple[float, float]:
     """Calculate the maximum churn and turnover of the current submission with respect to previous submissions.
     This function iterates over previous submissions and calculates churn and turnover for each submission
@@ -124,6 +125,10 @@ def calculate_max_churn_and_turnover(
               Series is indexed on the same type of tickers/ids as the current submission.
               We expect each of these to cover the full universe of their respective eras.
 
+        power: float
+            - exponent applied after ranking and gaussianization. Defaults to 1.5
+              to preserve the legacy Signals turnover definition.
+
     Returns:
         prev_week_max_churn -- the maximum churn from previous submissions
         prev_week_max_turnover -- the maximum turnover from previous submissions
@@ -152,6 +157,7 @@ def calculate_max_churn_and_turnover(
         curr_neutralizer,
         curr_sample_weight,
         center_and_normalize=True,
+        power=power,
     )[curr_sub.name]
     for datestamp in prev_subs:
         prev_sub = prev_subs[datestamp]
@@ -181,6 +187,7 @@ def calculate_max_churn_and_turnover(
             prev_neutralizer,
             prev_sample_weight,
             center_and_normalize=True,
+            power=power,
         )[prev_sub.name]
         try:
             churn_val = abs(churn(curr_sub, prev_sub))

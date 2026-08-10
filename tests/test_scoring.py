@@ -23,6 +23,7 @@ from numerai_tools.scoring import (
     filter_sort_index_many,
     filter_sort_top_bottom,
     filter_sort_top_bottom_concat,
+    generate_neutralized_weights,
     alpha,
     meta_portfolio_contribution,
 )
@@ -181,6 +182,34 @@ class TestScoring(unittest.TestCase):
             ],
         ).all()
 
+    def test_generate_neutralized_weights_power(self):
+        predictions = self.up_float.to_frame()
+        neutralizers = pd.DataFrame(0.0, index=predictions.index, columns=["factor"])
+        sample_weights = pd.Series(1.0, index=predictions.index)
+
+        default_weights = generate_neutralized_weights(
+            predictions, neutralizers, sample_weights
+        )
+        historical_weights = generate_neutralized_weights(
+            predictions, neutralizers, sample_weights, power=1.5
+        )
+        custom_weights = generate_neutralized_weights(
+            predictions, neutralizers, sample_weights, power=2
+        )
+
+        np.testing.assert_allclose(
+            default_weights,
+            power(gaussian(tie_kept_rank(predictions)), 1),
+        )
+        np.testing.assert_allclose(
+            historical_weights,
+            tie_kept_rank__gaussianize__pow_1_5(predictions),
+        )
+        np.testing.assert_allclose(
+            custom_weights,
+            power(gaussian(tie_kept_rank(predictions)), 2),
+        )
+
     def test_orthoganalize(self):
         assert np.isclose(
             orthogonalize(self.up.to_frame().values, self.up.to_frame().values),
@@ -330,7 +359,7 @@ class TestScoring(unittest.TestCase):
         )
         v = pd.Series([1, 0.5, 1, 0.5, 1]).T
         t = pd.Series([1, 0, 1, 0, 1]).T
-        score = alpha(s, N, v, t)
+        score = alpha(s, N, v, t, power=1.5)
         np.testing.assert_allclose(score, 0.0, atol=1e-14, rtol=1e-14)
 
     def test_meta_portfolio_contribution(self):
@@ -347,7 +376,7 @@ class TestScoring(unittest.TestCase):
         )
         v = pd.Series([3, 2, 1, 2, 3]).T
         t = pd.Series([1.0, 2.0, 3.0, 2.0, 1.0]).T
-        score = meta_portfolio_contribution(s, st, N, v, t)
+        score = meta_portfolio_contribution(s, st, N, v, t, power=1.5)
         assert np.isclose(score[0], -0.001580068753957352)
         assert np.isclose(score[1], 0.00237010313093603)
 
