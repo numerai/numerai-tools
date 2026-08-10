@@ -139,8 +139,8 @@ jobs:
 
   deploy:
     name: Deploy Numerai Tools
-    # Unlike numerapi and numerai-cli, the publish lives in the same workflow as
-    # the test matrix so that `needs` can gate it: a red suite on the tagged
+    # the publish lives in the same workflow as the test matrix
+    # so that `needs` can gate it: a red suite on the tagged
     # commit blocks the upload.
     needs: [verify-tag, test-numerai-tools]
     permissions:
