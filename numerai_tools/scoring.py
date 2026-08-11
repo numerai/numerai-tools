@@ -161,7 +161,7 @@ def min_max_normalize(s: pd.Series) -> pd.Series:
 
 def variance_normalize(df: pd.DataFrame) -> pd.DataFrame:
     """Scale a df such that all columns have std == 1."""
-    return cast(pd.DataFrame, df / np.std(df, axis=0))
+    return df / np.std(df, axis=0)
 
 
 def weight_normalize(s: S1) -> S1:
