@@ -446,14 +446,7 @@ def tie_kept_rank__gaussianize__pow_1_5(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame - the resulting data after applying the 3 functions
     """
-    return _tie_kept_rank__gaussianize__power(df, 1.5)
-
-
-def _tie_kept_rank__gaussianize__power(
-    df: pd.DataFrame, power_value: float
-) -> pd.DataFrame:
-    """Tie-kept rank, gaussianize, then apply a configurable power."""
-    return power(gaussian(tie_kept_rank(df)), power_value)
+    return power(gaussian(tie_kept_rank(df)), 1.5)
 
 
 def tie_kept_rank__gaussianize__neutralize__variance_normalize(
@@ -575,21 +568,11 @@ def generate_neutralized_weights(
     neutralizers: pd.DataFrame,
     sample_weights: pd.Series,
     center_and_normalize: bool = False,
-    power: float = 1,
 ) -> pd.DataFrame:
-    """Convert predictions into neutralized, sample-weighted portfolio weights.
-
-    Arguments:
-        predictions: prediction columns to transform
-        neutralizers: factors to neutralize the transformed predictions against
-        sample_weights: per-row weights applied during and after neutralization
-        center_and_normalize: center and normalize the resulting portfolio weights
-        power: exponent applied after ranking and gaussianization; defaults to 1
-    """
     assert not predictions.isna().any().any(), "Predictions contain NaNs"
     assert not neutralizers.isna().any().any(), "Normalization factors contain NaNs"
     assert not sample_weights.isna().any(), "Weights contain NaNs"
-    ranked_predictions = _tie_kept_rank__gaussianize__power(predictions, power)
+    ranked_predictions = tie_kept_rank__gaussianize__pow_1_5(predictions)
     ranked_predictions, neutralizers, sample_weights = filter_sort_index_many(
         [ranked_predictions, neutralizers, sample_weights]
     )
@@ -609,7 +592,6 @@ def alpha(
     neutralizers: pd.DataFrame,
     sample_weights: pd.Series,
     targets: pd.Series,
-    power: float = 1,
 ) -> pd.Series:
     """Calculates the "alpha" score:
         - rank, normalize, and power the signal
@@ -621,13 +603,10 @@ def alpha(
         neutralizers: pd.DataFrame - the neutralization columns
         sample_weights: pd.Series - the universe sampling weights
         targets: pd.Series - the live targets to evaluate against
-        power: float - exponent applied after ranking and gaussianization
     """
     targets = center(targets)
     predictions, targets = filter_sort_index(predictions, targets)
-    weights = generate_neutralized_weights(
-        predictions, neutralizers, sample_weights, power=power
-    )
+    weights = generate_neutralized_weights(predictions, neutralizers, sample_weights)
     alpha_scores = weights.apply(lambda w: w @ targets) / len(targets)
     return alpha_scores
 
@@ -638,7 +617,6 @@ def meta_portfolio_contribution(
     neutralizers: pd.DataFrame,
     sample_weights: pd.Series,
     targets: pd.Series,
-    power: float = 1,
 ) -> pd.Series:
     """Calculates the "meta portfolio" gradient w.r.t. stakes:
     - rank, normalize, and power each signal
@@ -654,7 +632,6 @@ def meta_portfolio_contribution(
         neutralizers: pd.DataFrame - the neutralization columns
         sample_weights: pd.Series - the universe sampling weights
         targets: pd.Series - the live targets to evaluate against
-        power: float - exponent applied after ranking and gaussianization
     """
     # Align predictions and targets on the same index / universe
     predictions, targets = filter_sort_index(predictions, targets)
@@ -667,9 +644,7 @@ def meta_portfolio_contribution(
     assert np.isclose(stake_weights.sum(), 1), "Stakes must sum to 1"
 
     # Generate neutralized weights W(predictions, neutralizers, sample_weights)
-    weights = generate_neutralized_weights(
-        predictions, neutralizers, sample_weights, power=power
-    )
+    weights = generate_neutralized_weights(predictions, neutralizers, sample_weights)
 
     # Extract aligned matrices/vectors
     w = cast(np.ndarray, weights[stakes.index].values)  # W ∈ R^{N×K}
