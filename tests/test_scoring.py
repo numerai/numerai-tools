@@ -1,10 +1,16 @@
+import inspect
 import unittest
 
 import numpy as np
 import pandas as pd  # type: ignore
 
 from numerai_tools.scoring import (
+    contribution_scores,
     correlation,
+    correlation_contribution,
+    filter_sort_neutralizers,
+    neutral_corr,
+    neutral_meta_model_contribution,
     numerai_corr,
     tie_broken_rank_correlation,
     spearman_correlation,
@@ -26,6 +32,35 @@ from numerai_tools.scoring import (
     alpha,
     meta_portfolio_contribution,
 )
+
+
+def neutral_fixture():
+    """Deterministic predictions / neutralizers / meta model / targets used by the
+    neutral_corr and neutral_meta_model_contribution tests. The predictions span
+    the interesting cases: one column fully explained by a neutralizer, one half
+    explained, and one independent of them."""
+    rng = np.random.default_rng(0)
+    n = 100
+    index = [f"id{i:03d}" for i in range(n)]
+    neutralizers = pd.DataFrame(
+        rng.normal(size=(n, 3)), index=index, columns=["f0", "f1", "f2"]
+    )
+    predictions = pd.DataFrame(
+        {
+            "exposed": neutralizers["f0"].values,
+            "mixed": 0.5 * neutralizers["f1"].values + 0.5 * rng.normal(size=n),
+            "clean": rng.normal(size=n),
+        },
+        index=index,
+    )
+    meta_model = pd.Series(rng.normal(size=n), index=index, name="mm")
+    # the Jupiter target is already a 5-bucket series in [-2, 2]
+    targets = pd.Series(
+        rng.choice([-2.0, -1.0, 0.0, 1.0, 2.0], size=n, p=[0.05, 0.2, 0.5, 0.2, 0.05]),
+        index=index,
+        name="target",
+    )
+    return predictions, neutralizers, meta_model, targets
 
 
 class TestScoring(unittest.TestCase):
@@ -316,6 +351,208 @@ class TestScoring(unittest.TestCase):
         )
         np.testing.assert_allclose(top, [3, 4])
         np.testing.assert_allclose(bot, [0, 1])
+
+    def test_neutral_corr(self):
+        predictions, neutralizers, _, targets = neutral_fixture()
+        np.testing.assert_allclose(
+            neutral_corr(predictions, neutralizers, targets),
+            [0.06491404084580031, 0.08523062609491586, -0.16120414125319232],
+        )
+        np.testing.assert_allclose(
+            neutral_corr(predictions, neutralizers, targets, top_bottom=20),
+            [0.08444670918905811, 0.12688143909398297, -0.09916069852822741],
+        )
+
+    def test_neutral_corr_is_neutralized_rank_gauss_correlation(self):
+        # neutral_corr must be exactly the correlation of the centered targets
+        # with the neutralized, rank-gaussianized predictions...
+        predictions, neutralizers, _, targets = neutral_fixture()
+        neutralized = neutralize(gaussian(tie_kept_rank(predictions)), neutralizers)
+        expected = neutralized.apply(
+            lambda sub: pearson_correlation(targets - targets.mean(), sub)
+        )
+        np.testing.assert_allclose(
+            neutral_corr(predictions, neutralizers, targets), expected
+        )
+        # ...and those predictions must have no exposure left to any neutralizer
+        for col in neutralized.columns:
+            for factor in neutralizers.columns:
+                assert abs(neutralized[col].corr(neutralizers[factor])) < 1e-10
+
+    def test_neutral_corr_constant_neutralizer(self):
+        # a constant (zero-variance) neutralizer only removes the mean, and
+        # pearson correlation is invariant to that, so neutral_corr reduces to a
+        # plain rank-gaussianized correlation. That is the only difference
+        # between neutral_corr and a neutralization-free score.
+        predictions, _, _, targets = neutral_fixture()
+        constant = pd.DataFrame(
+            {"constant": np.ones(len(predictions))}, index=predictions.index
+        )
+        expected = gaussian(tie_kept_rank(predictions)).apply(
+            lambda sub: pearson_correlation(targets - targets.mean(), sub)
+        )
+        np.testing.assert_allclose(
+            neutral_corr(predictions, constant, targets), expected
+        )
+
+    def test_neutral_corr_has_no_pow_1_5(self):
+        # numerai_corr powers both the predictions and the targets; neutral_corr
+        # powers neither and exposes no target_pow15 flag to turn one back on.
+        assert "target_pow15" not in inspect.signature(neutral_corr).parameters
+        predictions, _, _, targets = neutral_fixture()
+        constant = pd.DataFrame(
+            {"constant": np.ones(len(predictions))}, index=predictions.index
+        )
+        assert not np.allclose(
+            neutral_corr(predictions, constant, targets),
+            numerai_corr(predictions, targets),
+        )
+
+    def test_neutral_corr_is_scale_invariant(self):
+        # pearson correlation is scale-invariant, so variance normalizing the
+        # neutralized predictions would be a no-op here.
+        predictions, neutralizers, _, targets = neutral_fixture()
+        np.testing.assert_allclose(
+            neutral_corr(predictions, neutralizers, targets),
+            neutral_corr(predictions * 100, neutralizers, targets),
+        )
+
+    def test_neutral_corr_with_nans(self):
+        predictions, neutralizers, _, targets = neutral_fixture()
+        # a few missing neutralizer rows are dropped along with their predictions
+        holey = neutralizers.copy()
+        holey.iloc[:5, 0] = np.nan
+        np.testing.assert_allclose(
+            neutral_corr(predictions, holey, targets),
+            neutral_corr(predictions.iloc[5:], neutralizers.iloc[5:], targets),
+        )
+        # too many missing rows must raise rather than silently mis-score
+        holey.iloc[:50, 0] = np.nan
+        self.assertRaises(
+            AssertionError, neutral_corr, predictions, holey, targets
+        )
+
+    def test_neutral_meta_model_contribution(self):
+        predictions, neutralizers, meta_model, targets = neutral_fixture()
+        np.testing.assert_allclose(
+            neutral_meta_model_contribution(
+                predictions, meta_model, neutralizers, targets
+            ),
+            [0.008166920268846335, 0.056287525943196595, -0.1465734703333085],
+        )
+        np.testing.assert_allclose(
+            neutral_meta_model_contribution(
+                predictions, meta_model, neutralizers, targets, top_bottom=20
+            ),
+            [0.014212728439240246, 0.07892827246673215, -0.13904192918920918],
+        )
+
+    def test_neutral_meta_model_contribution_does_not_neutralize_meta_model(self):
+        # RESOLVED (T-803): the meta model passed in is the v3NUSWMM, which is
+        # already neutral, so only the submissions are neutralized. This test
+        # fails if the meta model is neutralized inside the function.
+        predictions, neutralizers, meta_model, targets = neutral_fixture()
+        scores = neutral_meta_model_contribution(
+            predictions, meta_model, neutralizers, targets
+        )
+        neutral_preds = neutralize(
+            gaussian(tie_kept_rank(predictions)), neutralizers
+        ).values
+        raw_mm = gaussian(tie_kept_rank(meta_model.to_frame()))[meta_model.name]
+        neutralized_mm = neutralize(raw_mm.to_frame(), neutralizers)[meta_model.name]
+        np.testing.assert_allclose(
+            scores,
+            contribution_scores(
+                orthogonalize(neutral_preds, raw_mm.values),
+                targets.copy(),
+                predictions,
+            ),
+        )
+        assert not np.allclose(
+            scores,
+            contribution_scores(
+                orthogonalize(neutral_preds, neutralized_mm.values),
+                targets.copy(),
+                predictions,
+            ),
+            atol=1e-6,
+        )
+
+    def test_neutral_meta_model_contribution_no_variance_normalize(self):
+        # variance normalizing the neutralized predictions divides each score by
+        # that prediction's own residual std, which restores full-scale
+        # contribution to predictions that were mostly neutralizer exposure.
+        predictions, neutralizers, meta_model, targets = neutral_fixture()
+        neutral_preds = neutralize(gaussian(tie_kept_rank(predictions)), neutralizers)
+        raw_mm = gaussian(tie_kept_rank(meta_model.to_frame()))[meta_model.name]
+        assert not np.allclose(
+            neutral_meta_model_contribution(
+                predictions, meta_model, neutralizers, targets
+            ),
+            contribution_scores(
+                orthogonalize(
+                    variance_normalize(neutral_preds).values, raw_mm.values
+                ),
+                targets.copy(),
+                predictions,
+            ),
+            atol=1e-6,
+        )
+
+    def test_neutral_meta_model_contribution_with_nans(self):
+        predictions, neutralizers, meta_model, targets = neutral_fixture()
+        holey = neutralizers.copy()
+        holey.iloc[:50, 0] = np.nan
+        self.assertRaises(
+            AssertionError,
+            neutral_meta_model_contribution,
+            predictions,
+            meta_model,
+            holey,
+            targets,
+        )
+
+    def test_correlation_contribution(self):
+        # characterization guard: correlation_contribution and
+        # neutral_meta_model_contribution share contribution_scores, so this
+        # pins the behavior the shared code must preserve.
+        predictions, _, meta_model, targets = neutral_fixture()
+        np.testing.assert_allclose(
+            correlation_contribution(predictions, meta_model, targets),
+            [-0.07921759154900317, 0.15600418598982832, -0.15555182394041875],
+        )
+        np.testing.assert_allclose(
+            correlation_contribution(predictions, meta_model, targets, 20),
+            [-0.08827829422628865, 0.33532314469592894, -0.14008793632499197],
+        )
+        # the [0, 1] target branch still scales those targets into buckets
+        np.testing.assert_allclose(
+            correlation_contribution(predictions, meta_model, (targets + 2) / 4),
+            correlation_contribution(predictions, meta_model, targets + 2),
+        )
+
+    def test_filter_sort_neutralizers(self):
+        predictions, neutralizers, _, _ = neutral_fixture()
+        # the neutralizer universe is allowed to be much larger than the
+        # scored universe without tripping the filtered-ratio check
+        wide = pd.concat(
+            [
+                neutralizers,
+                neutralizers.rename(index=lambda i: f"extra{i}"),
+            ]
+        )
+        filtered_preds, filtered_neutralizers = filter_sort_neutralizers(
+            predictions, wide
+        )
+        assert filtered_preds.index.equals(predictions.index.sort_values())
+        assert filtered_neutralizers.index.equals(predictions.index.sort_values())
+        # but dropping too many of the scored ids must raise
+        self.assertRaises(
+            AssertionError,
+            filter_sort_neutralizers,
+            predictions,
+            neutralizers.iloc[:50],
+        )
 
     def test_alpha(self):
         s = pd.DataFrame([[1, 2, 3, 4, 5]]).T

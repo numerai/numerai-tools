@@ -75,6 +75,37 @@ def filter_sort_index_many(
     return result
 
 
+def filter_sort_neutralizers(
+    s: S1,
+    neutralizers: pd.DataFrame,
+    max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
+) -> Tuple[S1, pd.DataFrame]:
+    """Filters and sorts the given data and neutralizers onto their shared index.
+
+    Unlike filter_sort_index, only the ratio of ids dropped from `s` is checked.
+    The neutralizer universe is expected to be a superset of the scored universe,
+    so dropping a large portion of the neutralizers is normal, not an error.
+
+    Arguments:
+        s: pd.DataFrame | pd.Series - the data to align to the neutralizers
+        neutralizers: pd.DataFrame - the neutralizer data with features as columns
+        max_filtered_ratio: float - the maximum ratio of ids that can be dropped
+                                    from s for lack of neutralizer coverage
+
+    Returns:
+        Tuple[
+            pd.DataFrame | pd.Series,
+            pd.DataFrame,
+        ] - the filtered and sorted data and neutralizers
+    """
+    ids = s.dropna().index.intersection(neutralizers.dropna().index).sort_values()
+    assert len(ids) / len(s) >= (1 - max_filtered_ratio), (
+        "s does not have enough overlapping ids with the neutralizers,"
+        f" must have >= {round(1-max_filtered_ratio,2)*100}% overlapping ids"
+    )
+    return cast(S1, s.loc[ids]), neutralizers.loc[ids]
+
+
 def filter_sort_top_bottom(
     s: pd.Series, top_bottom: int
 ) -> Tuple[pd.Series, pd.Series]:
@@ -289,6 +320,63 @@ def stake_weight(
     return (predictions[stakes.index] * stakes).sum(axis=1) / stakes.sum()
 
 
+def contribution_scores(
+    neutral_preds: np.ndarray,
+    live_targets: pd.Series,
+    predictions: pd.DataFrame,
+    top_bottom: Optional[int] = None,
+) -> pd.Series:
+    """Dot the orthogonalized predictions with the centered targets to get the
+    contribution of each prediction column. Shared by correlation_contribution
+    and neutral_meta_model_contribution, which differ only in how they build
+    the orthogonalized predictions.
+
+    Arguments:
+        neutral_preds: np.ndarray - the predictions orthogonalized wrt the meta model
+        live_targets: pd.Series - the live targets to evaluate against
+        predictions: pd.DataFrame - the predictions neutral_preds was built from,
+                                    used for its index and columns
+        top_bottom: Optional[int] - the number of top and bottom predictions to use
+                                    when calculating the contribution. Results in
+                                    2*top_bottom predictions.
+
+    Returns:
+        pd.Series - the resulting contribution scores for each column in predictions
+    """
+    # convert target to buckets [-2, -1, 0, 1, 2]
+    if (live_targets >= 0).all() and (live_targets <= 1).all():
+        live_targets = live_targets * 4
+    live_targets = center(live_targets)
+
+    if top_bottom is not None and top_bottom > 0:
+        # filter each column to its top and bottom n predictions
+        neutral_preds_df = pd.DataFrame(
+            neutral_preds, columns=predictions.columns, index=predictions.index
+        ).apply(lambda p: filter_sort_top_bottom_concat(p, top_bottom))
+        mmc_matrix = (
+            # create a dataframe for targets to match the filtered predictions
+            neutral_preds_df.apply(
+                lambda p: filter_sort_index(
+                    p,
+                    live_targets,
+                    (1 - top_bottom / len(live_targets)),
+                )[1]
+            )
+            .fillna(0)
+            .T.values
+            # then fill NaNs with 0 so we don't get NaNs in the dot product
+            #  and mutiply target w/ neutral preds to get MMC
+        ) @ neutral_preds_df.fillna(0).values
+        # only the diagonal is the proper score
+        mmc = np.diag(mmc_matrix) / (top_bottom * 2)
+    else:
+        # multiply target and neutralized predictions
+        # this is equivalent to covariance b/c mean = 0
+        target_values = cast(np.ndarray, live_targets.to_numpy())
+        mmc = (target_values @ neutral_preds) / len(live_targets)
+    return pd.Series(mmc, index=predictions.columns)
+
+
 def correlation_contribution(
     predictions: pd.DataFrame,
     meta_model: pd.Series,
@@ -336,38 +424,69 @@ def correlation_contribution(
     # orthogonalize predictions wrt meta model
     neutral_preds = orthogonalize(p, cast(np.ndarray, m))
 
-    # convert target to buckets [-2, -1, 0, 1, 2]
-    if (live_targets >= 0).all() and (live_targets <= 1).all():
-        live_targets = live_targets * 4
-    live_targets -= live_targets.mean()
+    return contribution_scores(neutral_preds, live_targets, predictions, top_bottom)
 
-    if top_bottom is not None and top_bottom > 0:
-        # filter each column to its top and bottom n predictions
-        neutral_preds_df = pd.DataFrame(
-            neutral_preds, columns=predictions.columns, index=predictions.index
-        ).apply(lambda p: filter_sort_top_bottom_concat(p, top_bottom))
-        mmc_matrix = (
-            # create a dataframe for targets to match the filtered predictions
-            neutral_preds_df.apply(
-                lambda p: filter_sort_index(
-                    p,
-                    live_targets,
-                    (1 - top_bottom / len(live_targets)),
-                )[1]
-            )
-            .fillna(0)
-            .T.values
-            # then fill NaNs with 0 so we don't get NaNs in the dot product
-            #  and mutiply target w/ neutral preds to get MMC
-        ) @ neutral_preds_df.fillna(0).values
-        # only the diagonal is the proper score
-        mmc = np.diag(mmc_matrix) / (top_bottom * 2)
-    else:
-        # multiply target and neutralized predictions
-        # this is equivalent to covariance b/c mean = 0
-        target_values = cast(np.ndarray, live_targets.to_numpy())
-        mmc = (target_values @ neutral_preds) / len(live_targets)
-    return pd.Series(mmc, index=predictions.columns)
+
+def neutral_meta_model_contribution(
+    predictions: pd.DataFrame,
+    meta_model: pd.Series,
+    neutralizers: pd.DataFrame,
+    live_targets: pd.Series,
+    top_bottom: Optional[int] = None,
+) -> pd.Series:
+    """Calculate how much the given predictions contribute to the given
+    Meta Model's correlation with the target, after neutralizing the
+    predictions against the given neutralizers.
+
+    This is correlation_contribution with a neutralization step inserted
+    after the rank/gaussianize step:
+    1. tie-kept ranking each prediction and the meta model
+    2. gaussianizing each prediction and the meta model
+    3. neutralizing each prediction wrt the neutralizers
+    4. orthogonalizing each prediction wrt the meta model
+    5. dot product the orthogonalized predictions and the targets
+       then normalize by the length of the target (equivalent to covariance)
+
+    The meta model is **not** neutralized: this score is defined against an
+    already-neutral meta model (the Signals v3NUSWMM), so neutralizing it again
+    would be a no-op. Pass an already-neutral meta model.
+
+    No 1.5 power is applied to the predictions or the targets, and no variance
+    normalization is applied to either: dividing each prediction by its own
+    post-neutralization residual std would restore full-scale contribution to
+    predictions whose signal was mostly neutralizer exposure, undoing step 3.
+
+    Arguments:
+        predictions: pd.DataFrame - the predictions to evaluate
+        meta_model: pd.Series - the already-neutral meta model to evaluate against
+        neutralizers: pd.DataFrame - the neutralizer data with features as columns
+        live_targets: pd.Series - the live targets to evaluate against
+        top_bottom: Optional[int] - the number of top and bottom predictions to use
+                                    when calculating the correlation. Results in
+                                    2*top_bottom predictions.
+
+    Returns:
+        pd.Series - the resulting neutral contributive correlation
+                    scores for each column in predictions
+    """
+    # filter and sort preds, mm, and targets wrt each other, then align the
+    # neutralizers to the ids that survive
+    live_targets, predictions, meta_model = filter_sort_index_many(
+        [live_targets, predictions, meta_model]
+    )
+    predictions, neutralizers = filter_sort_neutralizers(predictions, neutralizers)
+    live_targets = live_targets.loc[predictions.index]
+    meta_model = meta_model.loc[predictions.index]
+
+    # rank and normalize meta model and predictions so mean=0 and std=1,
+    # then neutralize the predictions wrt the neutralizers
+    p = neutralize(gaussian(tie_kept_rank(predictions)), neutralizers).values
+    m = gaussian(tie_kept_rank(meta_model.to_frame()))[meta_model.name].values
+
+    # orthogonalize predictions wrt meta model
+    neutral_preds = orthogonalize(p, cast(np.ndarray, m))
+
+    return contribution_scores(neutral_preds, live_targets, predictions, top_bottom)
 
 
 def neutralize(
@@ -506,6 +625,55 @@ def numerai_corr(
         lambda sub: pearson_correlation(targets, sub, top_bottom)
     )
     return scores
+
+
+def neutral_corr(
+    predictions: pd.DataFrame,
+    neutralizers: pd.DataFrame,
+    targets: pd.Series,
+    max_filtered_index_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
+    top_bottom: Optional[int] = None,
+) -> pd.Series:
+    """Calculates the correlation of neutralized predictions with the target.
+    1. Re-center the target on 0
+    2. filter and sort indices
+    3. tie-kept rank and gaussianize the predictions
+    4. neutralize the predictions wrt the neutralizers
+    5. calculate the pearson correlation between the predictions and targets
+
+    This is numerai_corr without the 1.5 power and with a neutralization step:
+    no 1.5 power is applied to the predictions or the targets, and there is no
+    target_pow15 flag. Note this is not feature_neutral_corr, which neutralizes
+    and then calls numerai_corr, re-ranking and re-powering predictions that
+    have already been transformed.
+
+    No variance normalization is applied either; pearson correlation is
+    scale-invariant, so it would be a no-op.
+
+    Arguments:
+        predictions: pd.DataFrame - the predictions to evaluate
+        neutralizers: pd.DataFrame - the neutralizer data with features as columns
+        targets: pd.Series - the live targets to evaluate against
+        max_filtered_index_ratio: float - the maximum ratio of indices that can be dropped
+                                          when matching up the targets, predictions,
+                                          and neutralizers
+        top_bottom: Optional[int] - the number of top and bottom predictions to use
+                                    when calculating the correlation. Results in
+                                    2*top_bottom predictions.
+
+    Returns:
+        pd.Series - the resulting correlation scores for each column in predictions
+    """
+    targets = center(targets)
+    targets, predictions = filter_sort_index(
+        targets, predictions, max_filtered_index_ratio
+    )
+    predictions, neutralizers = filter_sort_neutralizers(
+        predictions, neutralizers, max_filtered_index_ratio
+    )
+    targets = targets.loc[predictions.index]
+    predictions = neutralize(gaussian(tie_kept_rank(predictions)), neutralizers)
+    return predictions.apply(lambda sub: pearson_correlation(targets, sub, top_bottom))
 
 
 def feature_neutral_corr(
