@@ -98,7 +98,7 @@ def _neutralize_signal(
 def neutral_churn_penalty(
     neutral_churn: float,
     threshold: float = 0.1,
-    scaling_factor: float = 20.0,
+    scaling_factor: float = 10.0,
 ) -> float:
     """Calculate the fraction of a positive payout retained after a neutral
     churn penalty.

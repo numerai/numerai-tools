@@ -149,7 +149,7 @@ class TestSignals(unittest.TestCase):
         assert neutral_churn_penalty(0.1) == 1
         assert np.isclose(
             neutral_churn_penalty(0.2),
-            min(1, 2 / (1 + np.exp(20 * (0.2 - 0.1)))),
+            min(1, 2 / (1 + np.exp(10 * (0.2 - 0.1)))),
         )
         assert neutral_churn_penalty(0.2) < neutral_churn_penalty(0.15)
         assert neutral_churn_penalty(2, scaling_factor=400) == 0
