@@ -2,6 +2,17 @@
 
 Releases before 0.7.0 are recorded in the git history.
 
+## 0.7.1
+
+### Added
+
+- `signals.neutral_churn`: calculate churn after rank-Gaussianizing and
+  neutralizing each era's predictions against its neutralizer matrix.
+- `signals.calculate_mean_neutral_churn`: average neutral churn across recent
+  submissions using the same historical inputs as the turnover threshold.
+- `signals.neutral_churn_penalty`: calculate the fraction of a positive payout
+  retained under the Signals v3 neutral churn penalty.
+
 ## 0.7.0
 
 ### Added
@@ -15,13 +26,6 @@ Releases before 0.7.0 are recorded in the git history.
   same neutralization step inserted after the rank/gaussianize step. Only the
   submissions are neutralized; the meta model is expected to already be neutral.
   No variance normalization is applied.
-- `signals.neutral_churn`: calculate churn after rank-Gaussianizing and
-  neutralizing each era's predictions against its neutralizer matrix.
-- `signals.calculate_mean_neutral_churn`: average neutral churn across recent
-  submissions using the same historical inputs as the turnover threshold.
-- `signals.neutral_churn_penalty`: calculate the fraction of a positive payout
-  retained under the Signals v3 neutral churn penalty.
-
 ### Changed
 
 - `scoring.correlation_contribution` now shares its target-bucketing and dot
