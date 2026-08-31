@@ -2,6 +2,7 @@ import unittest
 import random
 import string
 from typing import Callable, Optional
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -231,6 +232,22 @@ class TestSignals(unittest.TestCase):
                 prev_sample_weights,
             )
 
+        with patch(
+            "numerai_tools.signals.churn",
+            side_effect=AssertionError("s2 must have non-zero standard deviation"),
+        ):
+            assert (
+                calculate_mean_neutral_churn(
+                    curr_sub,
+                    curr_neutralizer,
+                    sample_weight,
+                    prev_subs,
+                    prev_neutralizers,
+                    prev_sample_weights,
+                )
+                == 1
+            )
+
     def test_turnover(self):
         assert np.isclose(turnover(self.up, self.up), 0)
         assert np.isclose(turnover(self.up, self.up_down), 3)
@@ -298,6 +315,23 @@ class TestSignals(unittest.TestCase):
         )
         assert np.isclose(churn, 0)
         assert np.isclose(turnover, 0)
+
+        with patch(
+            "numerai_tools.signals.churn",
+            side_effect=AssertionError("s1 must have non-zero standard deviation"),
+        ):
+            with self.assertRaisesRegex(
+                AssertionError,
+                "s1 must have non-zero standard deviation",
+            ):
+                calculate_max_churn_and_turnover(
+                    curr_sub=fake_submission,
+                    curr_neutralizer=fake_neutralizers,
+                    curr_sample_weight=fake_sample_weights,
+                    prev_subs={"20240208": fake_submission.copy()},
+                    prev_neutralizers={"20240208": fake_neutralizers.copy()},
+                    prev_sample_weights={"20240208": fake_sample_weights.copy()},
+                )
 
 
 if __name__ == "__main__":

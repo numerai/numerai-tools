@@ -209,6 +209,9 @@ def calculate_mean_neutral_churn(
         curr_sample_weight,
     )
     neutral_curr_sub = _neutralize_signal(curr_sub, curr_neutralizer)
+    assert (
+        neutral_curr_sub.std() > 0
+    ), "curr_sub must have non-zero standard deviation after neutralization"
 
     neutral_churn_stats = []
     for datestamp in prev_subs:
@@ -224,10 +227,8 @@ def calculate_mean_neutral_churn(
         )
         try:
             neutral_churn_stats.append(churn(neutral_curr_sub, neutral_prev_sub))
-        except AssertionError as error:
-            if "does not have enough overlapping ids" in str(error):
-                continue
-            raise
+        except AssertionError:
+            continue
 
     return fmean(neutral_churn_stats) if neutral_churn_stats else 1.0
 
@@ -319,11 +320,13 @@ def calculate_max_churn_and_turnover(
         except AssertionError as e:
             if "does not have enough overlapping ids" in str(e):
                 continue
+            raise
         try:
             turnover_val = abs(turnover(neutralized_weights, prev_neutralized_weights))
         except AssertionError as e:
             if "does not have enough overlapping ids" in str(e):
                 continue
+            raise
 
         churn_stats.append(churn_val)
         turnover_stats.append(turnover_val)
