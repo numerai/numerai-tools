@@ -1,4 +1,5 @@
 from math import exp, isfinite
+from statistics import fmean
 from typing import Tuple, Optional
 
 from numerai_tools.scoring import (
@@ -90,15 +91,14 @@ def neutral_churn(
 
 def neutral_churn_penalty(
     neutral_churn: float,
-    threshold: float = 0.07,
+    threshold: float = 0.1,
     scaling_factor: float = 20.0,
 ) -> float:
     """Calculate the fraction of a positive payout retained after a neutral
     churn penalty.
 
-    Payouts retain their full value through ``threshold``. Above the threshold,
-    the retained fraction follows ``2 / (1 + exp(scaling_factor *
-    (neutral_churn - threshold)))``. Callers should apply the returned fraction
+    The retained fraction is ``min(1, 2 / (1 + exp(scaling_factor *
+    (neutral_churn - threshold))))``. Callers should apply the returned fraction
     only to positive payouts; burns are not penalized further.
 
     Arguments:
@@ -119,9 +119,13 @@ def neutral_churn_penalty(
         isfinite(scaling_factor) and scaling_factor > 0
     ), "scaling_factor must be finite and positive"
 
-    if neutral_churn < threshold:
+    if neutral_churn <= threshold:
         return 1.0
-    return 2 / (1 + exp(scaling_factor * (neutral_churn - threshold)))
+
+    # This is algebraically equivalent to the capped logistic curve while
+    # avoiding overflow for large positive scaling factors.
+    decay = exp(-scaling_factor * (neutral_churn - threshold))
+    return 2 * decay / (1 + decay)
 
 
 def turnover(
@@ -145,6 +149,83 @@ def turnover(
     s1, s2 = filter_sort_index(s1, s2)
     turnover = (s1 - s2).abs().sum() / 2
     return turnover
+
+
+def _clean_signal_submission(
+    submission: pd.Series,
+    sample_weight: pd.Series,
+    dst_id_col: Optional[str] = None,
+    dst_signal_col: Optional[str] = None,
+) -> Tuple[str, str, pd.Series]:
+    ticker_col, signal_col, _, submission_df, _ = validate_submission_signals(
+        universe=sample_weight.index.to_frame(),
+        submission=submission.reset_index(),
+    )
+    cleaned_submission = clean_submission(
+        universe=sample_weight.index.to_frame(),
+        submission=submission_df,
+        src_id_col=ticker_col,
+        src_signal_col=signal_col,
+        dst_id_col=dst_id_col,
+        dst_signal_col=dst_signal_col,
+        rank_and_fill=True,
+    )
+    return ticker_col, signal_col, cleaned_submission
+
+
+def calculate_mean_neutral_churn(
+    curr_sub: pd.Series,
+    curr_neutralizer: pd.DataFrame,
+    curr_sample_weight: pd.Series,
+    prev_subs: dict[str, pd.Series],
+    prev_neutralizers: dict[str, pd.DataFrame],
+    prev_sample_weights: dict[str, pd.Series],
+) -> float:
+    """Calculate mean neutral churn against recent submissions.
+
+    This uses the same historical lookup and full-universe submission cleaning
+    as ``calculate_max_churn_and_turnover``. For a live submission, provide the
+    most recent five submissions and their matching era data.
+
+    Arguments:
+        curr_sub: pd.Series - current-era submission indexed on tickers/ids
+        curr_neutralizer: pd.DataFrame - current-era neutralizers
+        curr_sample_weight: pd.Series - current-era sample weights
+        prev_subs: dict[str, pd.Series] - recent submissions by datestamp
+        prev_neutralizers: dict[str, pd.DataFrame] - neutralizers by datestamp
+        prev_sample_weights: dict[str, pd.Series] - sample weights by datestamp
+
+    Returns:
+        float - mean neutral churn, or 1.0 when no comparison can be calculated
+    """
+    curr_ticker_col, curr_signal_col, curr_sub = _clean_signal_submission(
+        curr_sub,
+        curr_sample_weight,
+    )
+
+    neutral_churn_stats = []
+    for datestamp in prev_subs:
+        _, _, prev_sub = _clean_signal_submission(
+            prev_subs[datestamp],
+            prev_sample_weights[datestamp],
+            dst_id_col=curr_ticker_col,
+            dst_signal_col=curr_signal_col,
+        )
+        try:
+            neutral_churn_stats.append(
+                neutral_churn(
+                    curr_sub,
+                    prev_sub,
+                    curr_neutralizer,
+                    prev_neutralizers[datestamp],
+                )
+            )
+        except AssertionError as error:
+            if "does not have enough overlapping ids" in str(error):
+                continue
+            raise
+
+    return fmean(neutral_churn_stats) if neutral_churn_stats else 1.0
 
 
 def calculate_max_churn_and_turnover(
@@ -201,22 +282,9 @@ def calculate_max_churn_and_turnover(
         prev_week_max_churn -- the maximum churn from previous submissions
         prev_week_max_turnover -- the maximum turnover from previous submissions
     """
-    (
-        curr_ticker_col,
-        curr_signal_col,
-        _,
-        curr_sub_df,
-        _,
-    ) = validate_submission_signals(
-        universe=curr_sample_weight.index.to_frame(),
-        submission=curr_sub.reset_index(),
-    )
-    curr_sub = clean_submission(
-        universe=curr_sample_weight.index.to_frame(),
-        submission=curr_sub_df,
-        src_id_col=curr_ticker_col,
-        src_signal_col=curr_signal_col,
-        rank_and_fill=True,
+    curr_ticker_col, curr_signal_col, curr_sub = _clean_signal_submission(
+        curr_sub,
+        curr_sample_weight,
     )
     churn_stats = []
     turnover_stats = []
@@ -230,24 +298,11 @@ def calculate_max_churn_and_turnover(
         prev_sub = prev_subs[datestamp]
         prev_neutralizer = prev_neutralizers[datestamp]
         prev_sample_weight = prev_sample_weights[datestamp]
-        (
-            prev_ticker_col,
-            prev_signal_col,
-            _,
-            prev_sub_df,
-            _,
-        ) = validate_submission_signals(
-            universe=prev_sample_weight.index.to_frame(),
-            submission=prev_sub.reset_index(),
-        )
-        prev_sub = clean_submission(
-            universe=prev_sample_weight.index.to_frame(),
-            submission=prev_sub_df,
-            src_id_col=prev_ticker_col,
-            src_signal_col=prev_signal_col,
+        _, _, prev_sub = _clean_signal_submission(
+            prev_sub,
+            prev_sample_weight,
             dst_id_col=curr_ticker_col,
             dst_signal_col=curr_signal_col,
-            rank_and_fill=True,
         )
         prev_neutralized_weights = generate_neutralized_weights(
             prev_sub.to_frame(),

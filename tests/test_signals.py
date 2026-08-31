@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from numerai_tools.signals import (
+    calculate_mean_neutral_churn,
     churn,
     neutral_churn,
     neutral_churn_penalty,
@@ -143,17 +144,76 @@ class TestSignals(unittest.TestCase):
 
     def test_neutral_churn_penalty(self):
         assert neutral_churn_penalty(0) == 1
-        assert neutral_churn_penalty(0.069) == 1
-        assert neutral_churn_penalty(0.07) == 1
+        assert neutral_churn_penalty(0.099) == 1
+        assert neutral_churn_penalty(0.1) == 1
         assert np.isclose(
             neutral_churn_penalty(0.2),
-            2 / (1 + np.exp(20 * (0.2 - 0.07))),
+            min(1, 2 / (1 + np.exp(20 * (0.2 - 0.1)))),
         )
-        assert neutral_churn_penalty(0.2) < neutral_churn_penalty(0.1)
+        assert neutral_churn_penalty(0.2) < neutral_churn_penalty(0.15)
+        assert neutral_churn_penalty(2, scaling_factor=400) == 0
 
         self.assertRaises(AssertionError, neutral_churn_penalty, np.nan)
         self.assertRaises(AssertionError, neutral_churn_penalty, -0.01)
-        self.assertRaises(AssertionError, neutral_churn_penalty, 0.2, 0.07, 0)
+        self.assertRaises(AssertionError, neutral_churn_penalty, 0.2, 0.1, 0)
+
+    def test_calculate_mean_neutral_churn(self):
+        rng = np.random.default_rng(1)
+        index = pd.Index([f"id{i:03d}" for i in range(100)], name="numerai_ticker")
+        curr_sub = pd.Series(rng.random(size=100), index=index, name="signal")
+        prev_subs = {
+            "20260814": pd.Series(rng.random(size=100), index=index, name="signal"),
+            "20260821": pd.Series(rng.random(size=100), index=index, name="signal"),
+        }
+        curr_neutralizer = pd.DataFrame(
+            rng.normal(size=(100, 3)), index=index, columns=["f0", "f1", "f2"]
+        )
+        prev_neutralizers = {
+            datestamp: pd.DataFrame(
+                rng.normal(size=(100, 3)),
+                index=index,
+                columns=["f0", "f1", "f2"],
+            )
+            for datestamp in prev_subs
+        }
+        sample_weight = pd.Series(1.0, index=index, name="sample_weight")
+        prev_sample_weights = {
+            datestamp: sample_weight.copy() for datestamp in prev_subs
+        }
+
+        ranked_curr_sub = tie_kept_rank(curr_sub)
+        expected_churns = [
+            neutral_churn(
+                ranked_curr_sub,
+                tie_kept_rank(prev_sub),
+                curr_neutralizer,
+                prev_neutralizers[datestamp],
+            )
+            for datestamp, prev_sub in prev_subs.items()
+        ]
+
+        assert np.isclose(
+            calculate_mean_neutral_churn(
+                curr_sub,
+                curr_neutralizer,
+                sample_weight,
+                prev_subs,
+                prev_neutralizers,
+                prev_sample_weights,
+            ),
+            np.mean(expected_churns),
+        )
+        assert (
+            calculate_mean_neutral_churn(
+                curr_sub,
+                curr_neutralizer,
+                sample_weight,
+                {},
+                {},
+                {},
+            )
+            == 1
+        )
 
     def test_turnover(self):
         assert np.isclose(turnover(self.up, self.up), 0)

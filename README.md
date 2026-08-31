@@ -23,5 +23,7 @@ pip install numerai-tools
 
 - The `signals.py` module provides code specific to Numerai Signals such as
   churn and turnover. `neutral_churn` measures churn after applying each era's
-  neutralizers, and `neutral_churn_penalty` calculates the positive-payout
-  retention multiplier described by the Signals v3 churn penalty.
+  neutralizers, `calculate_mean_neutral_churn` averages that metric across the
+  provided recent submissions, and `neutral_churn_penalty` calculates the
+  positive-payout retention multiplier described by the Signals v3 churn
+  penalty.
