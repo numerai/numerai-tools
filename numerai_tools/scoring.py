@@ -75,37 +75,6 @@ def filter_sort_index_many(
     return result
 
 
-def filter_sort_neutralizers(
-    s: S1,
-    neutralizers: pd.DataFrame,
-    max_filtered_ratio: float = DEFAULT_MAX_FILTERED_INDEX_RATIO,
-) -> Tuple[S1, pd.DataFrame]:
-    """Filters and sorts the given data and neutralizers onto their shared index.
-
-    Unlike filter_sort_index, only the ratio of ids dropped from `s` is checked.
-    The neutralizer universe is expected to be a superset of the scored universe,
-    so dropping a large portion of the neutralizers is normal, not an error.
-
-    Arguments:
-        s: pd.DataFrame | pd.Series - the data to align to the neutralizers
-        neutralizers: pd.DataFrame - the neutralizer data with features as columns
-        max_filtered_ratio: float - the maximum ratio of ids that can be dropped
-                                    from s for lack of neutralizer coverage
-
-    Returns:
-        Tuple[
-            pd.DataFrame | pd.Series,
-            pd.DataFrame,
-        ] - the filtered and sorted data and neutralizers
-    """
-    ids = s.dropna().index.intersection(neutralizers.dropna().index).sort_values()
-    assert len(ids) / len(s) >= (1 - max_filtered_ratio), (
-        "s does not have enough overlapping ids with the neutralizers,"
-        f" must have >= {round(1-max_filtered_ratio,2)*100}% overlapping ids"
-    )
-    return cast(S1, s.loc[ids]), neutralizers.loc[ids]
-
-
 def filter_sort_top_bottom(
     s: pd.Series, top_bottom: int
 ) -> Tuple[pd.Series, pd.Series]:
@@ -328,7 +297,7 @@ def contribution_scores(
 ) -> pd.Series:
     """Dot the orthogonalized predictions with the centered targets to get the
     contribution of each prediction column. Shared by correlation_contribution
-    and neutral_meta_model_contribution, which differ only in how they build
+    and neutral_contribution, which differ only in how they build
     the orthogonalized predictions.
 
     Arguments:
@@ -419,7 +388,7 @@ def correlation_contribution(
 
     # rank and normalize meta model and predictions so mean=0 and std=1
     p = gaussian(tie_kept_rank(predictions)).values
-    m = gaussian(tie_kept_rank(meta_model.to_frame()))[meta_model.name].values
+    m = gaussian(tie_kept_rank(meta_model.to_frame())).iloc[:, 0].values
 
     # orthogonalize predictions wrt meta model
     neutral_preds = orthogonalize(p, cast(np.ndarray, m))
@@ -427,7 +396,7 @@ def correlation_contribution(
     return contribution_scores(neutral_preds, live_targets, predictions, top_bottom)
 
 
-def neutral_meta_model_contribution(
+def neutral_contribution(
     predictions: pd.DataFrame,
     meta_model: pd.Series,
     neutralizers: pd.DataFrame,
@@ -469,19 +438,15 @@ def neutral_meta_model_contribution(
         pd.Series - the resulting neutral contributive correlation
                     scores for each column in predictions
     """
-    # filter and sort preds, mm, and targets wrt each other, then align the
-    # neutralizers to the ids that survive
-    live_targets, predictions, meta_model = filter_sort_index_many(
-        [live_targets, predictions, meta_model]
+    # filter and sort predictions, meta model, neutralizers, and targets together
+    live_targets, predictions, meta_model, neutralizers = filter_sort_index_many(
+        [live_targets, predictions, meta_model, neutralizers]
     )
-    predictions, neutralizers = filter_sort_neutralizers(predictions, neutralizers)
-    live_targets = live_targets.loc[predictions.index]
-    meta_model = meta_model.loc[predictions.index]
 
     # rank and normalize meta model and predictions so mean=0 and std=1,
     # then neutralize the predictions wrt the neutralizers
     p = neutralize(gaussian(tie_kept_rank(predictions)), neutralizers).values
-    m = gaussian(tie_kept_rank(meta_model.to_frame()))[meta_model.name].values
+    m = gaussian(tie_kept_rank(meta_model.to_frame())).iloc[:, 0].values
 
     # orthogonalize predictions wrt meta model
     neutral_preds = orthogonalize(p, cast(np.ndarray, m))
@@ -627,7 +592,7 @@ def numerai_corr(
     return scores
 
 
-def neutral_corr(
+def neutral_correlation(
     predictions: pd.DataFrame,
     neutralizers: pd.DataFrame,
     targets: pd.Series,
@@ -665,13 +630,9 @@ def neutral_corr(
         pd.Series - the resulting correlation scores for each column in predictions
     """
     targets = center(targets)
-    targets, predictions = filter_sort_index(
-        targets, predictions, max_filtered_index_ratio
+    targets, predictions, neutralizers = filter_sort_index_many(
+        [targets, predictions, neutralizers], max_filtered_index_ratio
     )
-    predictions, neutralizers = filter_sort_neutralizers(
-        predictions, neutralizers, max_filtered_index_ratio
-    )
-    targets = targets.loc[predictions.index]
     predictions = neutralize(gaussian(tie_kept_rank(predictions)), neutralizers)
     return predictions.apply(lambda sub: pearson_correlation(targets, sub, top_bottom))
 
