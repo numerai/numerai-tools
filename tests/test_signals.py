@@ -215,6 +215,22 @@ class TestSignals(unittest.TestCase):
             == 1
         )
 
+        wrong_index = pd.Index(
+            [f"wrong{i:03d}" for i in range(100)], name="numerai_ticker"
+        )
+        with self.assertRaisesRegex(
+            AssertionError,
+            "does not have enough overlapping ids",
+        ):
+            calculate_mean_neutral_churn(
+                curr_sub,
+                curr_neutralizer.set_axis(wrong_index),
+                sample_weight,
+                prev_subs,
+                prev_neutralizers,
+                prev_sample_weights,
+            )
+
     def test_turnover(self):
         assert np.isclose(turnover(self.up, self.up), 0)
         assert np.isclose(turnover(self.up, self.up_down), 3)

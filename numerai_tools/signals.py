@@ -77,16 +77,22 @@ def neutral_churn(
     Returns:
         float - the churn between the neutralized predictions
     """
-    s1, neutralizers1 = filter_sort_index(s1, neutralizers1)
-    s2, neutralizers2 = filter_sort_index(s2, neutralizers2)
+    return churn(
+        _neutralize_signal(s1, neutralizers1),
+        _neutralize_signal(s2, neutralizers2),
+    )
 
-    neutral_s1 = neutralize(gaussian(tie_kept_rank(s1.to_frame())), neutralizers1).iloc[
-        :, 0
-    ]
-    neutral_s2 = neutralize(gaussian(tie_kept_rank(s2.to_frame())), neutralizers2).iloc[
-        :, 0
-    ]
-    return churn(neutral_s1, neutral_s2)
+
+def _neutralize_signal(
+    signal: pd.Series,
+    neutralizers: pd.DataFrame,
+) -> pd.Series:
+    signal, neutralizers = filter_sort_index(signal, neutralizers)
+
+    return neutralize(
+        gaussian(tie_kept_rank(signal.to_frame())),
+        neutralizers,
+    ).iloc[:, 0]
 
 
 def neutral_churn_penalty(
@@ -202,6 +208,7 @@ def calculate_mean_neutral_churn(
         curr_sub,
         curr_sample_weight,
     )
+    neutral_curr_sub = _neutralize_signal(curr_sub, curr_neutralizer)
 
     neutral_churn_stats = []
     for datestamp in prev_subs:
@@ -211,15 +218,12 @@ def calculate_mean_neutral_churn(
             dst_id_col=curr_ticker_col,
             dst_signal_col=curr_signal_col,
         )
+        neutral_prev_sub = _neutralize_signal(
+            prev_sub,
+            prev_neutralizers[datestamp],
+        )
         try:
-            neutral_churn_stats.append(
-                neutral_churn(
-                    curr_sub,
-                    prev_sub,
-                    curr_neutralizer,
-                    prev_neutralizers[datestamp],
-                )
-            )
+            neutral_churn_stats.append(churn(neutral_curr_sub, neutral_prev_sub))
         except AssertionError as error:
             if "does not have enough overlapping ids" in str(error):
                 continue
