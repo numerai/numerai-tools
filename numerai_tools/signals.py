@@ -1,9 +1,13 @@
+from math import exp, isfinite
 from typing import Tuple, Optional
 
 from numerai_tools.scoring import (
     filter_sort_index,
     filter_sort_top_bottom,
+    gaussian,
+    neutralize,
     spearman_correlation,
+    tie_kept_rank,
     generate_neutralized_weights,
 )
 from numerai_tools.submissions import (
@@ -49,6 +53,75 @@ def churn(
     assert s1.std() > 0, "s1 must have non-zero standard deviation"
     assert s2.std() > 0, "s2 must have non-zero standard deviation"
     return 1 - spearman_correlation(s1, s2)
+
+
+def neutral_churn(
+    s1: pd.Series,
+    s2: pd.Series,
+    neutralizers1: pd.DataFrame,
+    neutralizers2: pd.DataFrame,
+) -> float:
+    """Calculate churn after neutralizing each era's predictions.
+
+    Each prediction is tie-kept ranked, Gaussianized, and neutralized against
+    the corresponding era's neutralizers. Churn is then calculated between the
+    two neutral residuals as 1 minus their Spearman correlation.
+
+    Arguments:
+        s1: pd.Series - predictions from the first era
+        s2: pd.Series - predictions from the second era
+        neutralizers1: pd.DataFrame - first-era neutralizers
+        neutralizers2: pd.DataFrame - second-era neutralizers
+
+    Returns:
+        float - the churn between the neutralized predictions
+    """
+    s1, neutralizers1 = filter_sort_index(s1, neutralizers1)
+    s2, neutralizers2 = filter_sort_index(s2, neutralizers2)
+
+    neutral_s1 = neutralize(gaussian(tie_kept_rank(s1.to_frame())), neutralizers1).iloc[
+        :, 0
+    ]
+    neutral_s2 = neutralize(gaussian(tie_kept_rank(s2.to_frame())), neutralizers2).iloc[
+        :, 0
+    ]
+    return churn(neutral_s1, neutral_s2)
+
+
+def neutral_churn_penalty(
+    neutral_churn: float,
+    threshold: float = 0.07,
+    scaling_factor: float = 20.0,
+) -> float:
+    """Calculate the fraction of a positive payout retained after a neutral
+    churn penalty.
+
+    Payouts retain their full value through ``threshold``. Above the threshold,
+    the retained fraction follows ``2 / (1 + exp(scaling_factor *
+    (neutral_churn - threshold)))``. Callers should apply the returned fraction
+    only to positive payouts; burns are not penalized further.
+
+    Arguments:
+        neutral_churn: float - post-neutralization churn in the range [0, 2]
+        threshold: float - churn through which the full payout is retained
+        scaling_factor: float - rate at which the retained payout diminishes
+
+    Returns:
+        float - the fraction of a positive payout retained
+    """
+    assert (
+        isfinite(neutral_churn) and 0 <= neutral_churn <= 2
+    ), "neutral_churn must be finite and between 0 and 2"
+    assert (
+        isfinite(threshold) and 0 <= threshold <= 2
+    ), "threshold must be finite and between 0 and 2"
+    assert (
+        isfinite(scaling_factor) and scaling_factor > 0
+    ), "scaling_factor must be finite and positive"
+
+    if neutral_churn < threshold:
+        return 1.0
+    return 2 / (1 + exp(scaling_factor * (neutral_churn - threshold)))
 
 
 def turnover(

@@ -8,9 +8,12 @@ import pandas as pd
 
 from numerai_tools.signals import (
     churn,
+    neutral_churn,
+    neutral_churn_penalty,
     turnover,
     calculate_max_churn_and_turnover,
 )
+from numerai_tools.scoring import gaussian, neutralize, tie_kept_rank
 
 
 def generate_unique_values(generator: Callable, length: int, num_rows: int) -> list:
@@ -106,6 +109,51 @@ class TestSignals(unittest.TestCase):
         assert np.isclose(tmp, 1), tmp
         tmp = churn(self.up, self.constant, top_bottom=2)
         assert np.isclose(tmp, 0), tmp
+
+    def test_neutral_churn(self):
+        rng = np.random.default_rng(0)
+        index = [f"id{i:03d}" for i in range(100)]
+        neutralizers1 = pd.DataFrame(
+            rng.normal(size=(100, 3)), index=index, columns=["f0", "f1", "f2"]
+        )
+        neutralizers2 = pd.DataFrame(
+            rng.normal(size=(100, 3)), index=index, columns=["f0", "f1", "f2"]
+        )
+        common_signal = rng.normal(size=100)
+        s1 = pd.Series(
+            common_signal + neutralizers1["f0"], index=index, name="prediction"
+        )
+        s2 = pd.Series(
+            common_signal + neutralizers2["f0"], index=index, name="prediction"
+        )
+
+        neutral_s1 = neutralize(
+            gaussian(tie_kept_rank(s1.to_frame())), neutralizers1
+        ).iloc[:, 0]
+        neutral_s2 = neutralize(
+            gaussian(tie_kept_rank(s2.to_frame())), neutralizers2
+        ).iloc[:, 0]
+
+        neutral_churn_value = neutral_churn(s1, s2, neutralizers1, neutralizers2)
+        assert np.isclose(
+            neutral_churn_value,
+            churn(neutral_s1, neutral_s2),
+        )
+        assert neutral_churn_value < churn(s1, s2)
+
+    def test_neutral_churn_penalty(self):
+        assert neutral_churn_penalty(0) == 1
+        assert neutral_churn_penalty(0.069) == 1
+        assert neutral_churn_penalty(0.07) == 1
+        assert np.isclose(
+            neutral_churn_penalty(0.2),
+            2 / (1 + np.exp(20 * (0.2 - 0.07))),
+        )
+        assert neutral_churn_penalty(0.2) < neutral_churn_penalty(0.1)
+
+        self.assertRaises(AssertionError, neutral_churn_penalty, np.nan)
+        self.assertRaises(AssertionError, neutral_churn_penalty, -0.01)
+        self.assertRaises(AssertionError, neutral_churn_penalty, 0.2, 0.07, 0)
 
     def test_turnover(self):
         assert np.isclose(turnover(self.up, self.up), 0)
