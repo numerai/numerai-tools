@@ -3,6 +3,15 @@ name: Test & Deploy Numerai Tools
 on:
   workflow_dispatch:
   push:
+    branches:
+      - "**"
+    tags:
+      # Release tags are bare version numbers: 0.7.0, 0.7.0.dev0
+      - "[0-9]*"
+      # A `v` prefix is NOT a valid release tag. It is matched here only so the
+      # verify-tag job can fail with an explanatory error instead of silently
+      # doing nothing.
+      - "v[0-9]*"
 
 concurrency: deploy-numerai-tools-${{ github.ref }}
 
@@ -12,13 +21,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.11, 3.12, 3.13, 3.14]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
         pandas-version:
           - "pandas>=2.2.2,<2.3"
           - "pandas>=2.3,<3.0"
           - "pandas>=3.0,<4.0"
         exclude:
-          - python-version: 3.14
+          - python-version: "3.14"
             pandas-version: "pandas>=2.2.2,<2.3"
     permissions:
       id-token: write
@@ -26,9 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -57,21 +66,95 @@ jobs:
       - name: Test
         run: poetry run pytest -W error::FutureWarning
 
+  verify-tag:
+    name: Verify Release Tag
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # full history so the master-ancestry check below can run
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - run: python -m pip install --upgrade packaging
+
+      - name: Verify tag format and version match
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import sys
+          import tomllib
+
+          from packaging.version import Version
+
+          tag = os.environ["TAG_NAME"]
+          if tag.startswith("v"):
+              sys.exit(
+                  f"::error::Release tags must be bare version numbers. "
+                  f"`{tag}` has a `v` prefix; delete it and tag `{tag[1:]}` instead."
+              )
+          pyproject = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          pkg = pyproject["project"]["version"]
+          print(f"tag={tag} pyproject.toml={pkg}")
+          if Version(tag) != Version(pkg):
+              sys.exit(
+                  f"::error::Tag {tag} does not match pyproject.toml version={pkg}"
+              )
+          print(f"::notice::publishing numerai-tools {Version(pkg)}")
+          PY
+
+      - name: Final releases must come from master
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY' > prerelease.txt
+          import os
+
+          from packaging.version import Version
+
+          print("yes" if Version(os.environ["TAG_NAME"]).is_prerelease else "no")
+          PY
+          if [ "$(cat prerelease.txt)" = "no" ]; then
+            git fetch --no-tags --quiet origin master
+            if git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+              echo "final release from a commit on master: ok"
+            else
+              echo "::error::Final release tags must point at a commit on master; $GITHUB_SHA is not one. Cut a pre-release (e.g. 0.7.0.dev0) from your branch instead."
+              exit 1
+            fi
+          else
+            echo "pre-release: master-ancestry check skipped"
+          fi
+          rm -f prerelease.txt
+
   deploy:
     name: Deploy Numerai Tools
-    needs: test-numerai-tools
+    # the publish lives in the same workflow as the test matrix
+    # so that `needs` can gate it: a red suite on the tagged
+    # commit blocks the upload.
+    needs: [verify-tag, test-numerai-tools]
     permissions:
       id-token: write
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.ref == 'refs/heads/master'
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.14"
 
       - uses: snok/install-poetry@v1
         with:
@@ -81,6 +164,8 @@ jobs:
       - name: Install dependencies
         run: poetry install
 
+      # No --skip-existing: under tag-triggered releases a duplicate version is
+      # a mistake worth failing on, not something to silently swallow.
       - name: Deploy
         id: deploy
         run: |
