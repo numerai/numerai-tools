@@ -21,4 +21,9 @@ pip install numerai-tools
 
 - The `submissions.py` module provides helper functions to ensure your submissions are valid and formatted correctly. Use this in your automated prediction pipelines to ensure uploads don't fail.
 
-- The `signals.py` module provides code specific to Numerai Signals such as churn and turnover. Use this to ensure your Signals submissions are properly formatted.
+- The `signals.py` module provides code specific to Numerai Signals such as
+  churn and turnover. `neutral_churn` measures churn after applying each era's
+  neutralizers, `calculate_mean_neutral_churn` averages that metric across the
+  provided recent submissions, and `neutral_churn_penalty` calculates the
+  positive-payout retention multiplier described by the Signals v3 churn
+  penalty.
