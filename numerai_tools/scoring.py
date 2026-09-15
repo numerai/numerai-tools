@@ -405,20 +405,21 @@ def neutral_contribution(
 ) -> pd.Series:
     """Calculate how much the given predictions contribute to the given
     Meta Model's correlation with the target, after neutralizing the
-    predictions against the given neutralizers.
+    predictions and meta model against the given neutralizers.
 
     This is correlation_contribution with a neutralization step inserted
     after the rank/gaussianize step:
     1. tie-kept ranking each prediction and the meta model
     2. gaussianizing each prediction and the meta model
-    3. neutralizing each prediction wrt the neutralizers
-    4. orthogonalizing each prediction wrt the meta model
+    3. neutralizing each prediction and the meta model wrt the neutralizers
+    4. orthogonalizing each neutralized prediction wrt the neutralized meta model
     5. dot product the orthogonalized predictions and the targets
        then normalize by the length of the target (equivalent to covariance)
 
-    The meta model is **not** neutralized: this score is defined against an
-    already-neutral meta model (the Signals v3NUSWMM), so neutralizing it again
-    would be a no-op. Pass an already-neutral meta model.
+    Both predictions and the meta model are neutralized after rank/gaussianize,
+    which can reintroduce neutralizer exposure even for an already-neutral input.
+    Identical predictions and meta model therefore have zero contribution,
+    up to floating-point precision.
 
     No 1.5 power is applied to the predictions or the targets, and no variance
     normalization is applied to either: dividing each prediction by its own
@@ -427,7 +428,7 @@ def neutral_contribution(
 
     Arguments:
         predictions: pd.DataFrame - the predictions to evaluate
-        meta_model: pd.Series - the already-neutral meta model to evaluate against
+        meta_model: pd.Series - the meta model to evaluate against
         neutralizers: pd.DataFrame - the neutralizer data with features as columns
         live_targets: pd.Series - the live targets to evaluate against
         top_bottom: Optional[int] - the number of top and bottom predictions to use
@@ -444,9 +445,11 @@ def neutral_contribution(
     )
 
     # rank and normalize meta model and predictions so mean=0 and std=1,
-    # then neutralize the predictions wrt the neutralizers
+    # then neutralize both wrt the same neutralizers
     p = neutralize(gaussian(tie_kept_rank(predictions)), neutralizers).values
-    m = gaussian(tie_kept_rank(meta_model.to_frame())).iloc[:, 0].values
+    m = neutralize(
+        gaussian(tie_kept_rank(meta_model.to_frame())), neutralizers
+    ).iloc[:, 0].values
 
     # orthogonalize predictions wrt meta model
     neutral_preds = orthogonalize(p, cast(np.ndarray, m))
