@@ -2,6 +2,14 @@
 
 Releases before 0.7.0 are recorded in the git history.
 
+## 0.7.2
+
+### Fixed
+
+- `scoring.neutral_contribution` now neutralizes the rank-Gaussianized meta model
+  as well as the predictions before orthogonalizing. Predictions identical to
+  the meta model now have zero neutral contribution, up to floating-point precision.
+
 ## 0.7.1
 
 ### Added

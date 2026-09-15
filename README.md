@@ -17,7 +17,9 @@ pip install numerai-tools
     does not re-rank and re-power the predictions after neutralizing them.
   - `neutral_contribution` is `correlation_contribution` with that
     same neutralization step inserted after the rank/gaussianize step. It
-    neutralizes the submissions only; pass a meta model that is already neutral.
+    neutralizes both the submissions and the meta model against the same
+    neutralizers before orthogonalizing. Predictions identical to the meta model
+    have zero neutral contribution, up to floating-point precision.
 
 - The `submissions.py` module provides helper functions to ensure your submissions are valid and formatted correctly. Use this in your automated prediction pipelines to ensure uploads don't fail.
 
