@@ -201,9 +201,8 @@ attempt that will fail on a duplicate version.
 and nothing else in the tree hardcodes it, so `[project] version` is the single
 place to edit. CI reads it with `tomllib`, not a regex.
 
-**There is no CHANGELOG.md.** numerapi's flow includes a changelog edit at each
-version bump; this repo has never had one, and the release notes live in the PR
-title and `README.md`. Adding one is optional and not assumed anywhere above.
+**Update `CHANGELOG.md` when bumping the version.** Record the release's changes
+under the matching version heading.
 
 **The PyPI secret is `PYPI_API_KEY`**, as in numerai-cli, not `PYPI_API_TOKEN`
 as in numerapi. Publishing uses `poetry publish --build` — it is the path this

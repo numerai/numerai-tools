@@ -2,7 +2,7 @@
 
 Releases before 0.7.0 are recorded in the git history.
 
-## Unreleased
+## 0.7.2
 
 ### Fixed
 
