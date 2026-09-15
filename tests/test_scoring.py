@@ -435,43 +435,53 @@ class TestScoring(unittest.TestCase):
         predictions, neutralizers, meta_model, targets = neutral_fixture()
         np.testing.assert_allclose(
             neutral_contribution(predictions, meta_model, neutralizers, targets),
-            [0.008166920268846335, 0.056287525943196595, -0.1465734703333085],
+            [0.0076186790250345705, 0.05538415279085515, -0.1464960350754568],
         )
         np.testing.assert_allclose(
             neutral_contribution(
                 predictions, meta_model, neutralizers, targets, top_bottom=20
             ),
-            [0.014212728439240246, 0.07892827246673215, -0.13904192918920918],
+            [0.013225166729302146, 0.09427407739360479, -0.1390320473771724],
         )
 
-    def test_neutral_contribution_does_not_neutralize_meta_model(self):
-        # RESOLVED (T-803): the meta model passed in is the v3NUSWMM, which is
-        # already neutral, so only the submissions are neutralized. This test
-        # fails if the meta model is neutralized inside the function.
+    def test_neutral_contribution_neutralizes_meta_model(self):
         predictions, neutralizers, meta_model, targets = neutral_fixture()
-        scores = neutral_contribution(predictions, meta_model, neutralizers, targets)
         neutral_preds = neutralize(
             gaussian(tie_kept_rank(predictions)), neutralizers
         ).values
-        raw_mm = gaussian(tie_kept_rank(meta_model.to_frame()))[meta_model.name]
-        neutralized_mm = neutralize(raw_mm.to_frame(), neutralizers)[meta_model.name]
-        np.testing.assert_allclose(
-            scores,
-            contribution_scores(
-                orthogonalize(neutral_preds, raw_mm.values),
-                targets.copy(),
-                predictions,
-            ),
-        )
-        assert not np.allclose(
-            scores,
-            contribution_scores(
-                orthogonalize(neutral_preds, neutralized_mm.values),
-                targets.copy(),
-                predictions,
-            ),
-            atol=1e-6,
-        )
+        neutral_mm = neutralize(
+            gaussian(tie_kept_rank(meta_model.to_frame())), neutralizers
+        ).iloc[:, 0].values
+        for top_bottom in (None, 20):
+            with self.subTest(top_bottom=top_bottom):
+                np.testing.assert_allclose(
+                    neutral_contribution(
+                        predictions, meta_model, neutralizers, targets, top_bottom
+                    ),
+                    contribution_scores(
+                        orthogonalize(neutral_preds, neutral_mm),
+                        targets,
+                        predictions,
+                        top_bottom,
+                    ),
+                )
+
+    def test_neutral_contribution_identical_predictions(self):
+        predictions, neutralizers, _, targets = neutral_fixture()
+        # Cover different neutralizer exposures and ties, with multiple columns
+        # scored together so matching the meta model is a per-column property.
+        predictions["tied"] = predictions["mixed"].round(1)
+        for column in predictions:
+            for top_bottom in (None, 20):
+                with self.subTest(column=column, top_bottom=top_bottom):
+                    scores = neutral_contribution(
+                        predictions,
+                        predictions[column],
+                        neutralizers,
+                        targets,
+                        top_bottom,
+                    )
+                    np.testing.assert_allclose(scores[column], 0.0, atol=1e-12)
 
     def test_neutral_contribution_no_variance_normalize(self):
         # variance normalizing the neutralized predictions divides each score by
@@ -479,11 +489,13 @@ class TestScoring(unittest.TestCase):
         # contribution to predictions that were mostly neutralizer exposure.
         predictions, neutralizers, meta_model, targets = neutral_fixture()
         neutral_preds = neutralize(gaussian(tie_kept_rank(predictions)), neutralizers)
-        raw_mm = gaussian(tie_kept_rank(meta_model.to_frame()))[meta_model.name]
+        neutral_mm = neutralize(
+            gaussian(tie_kept_rank(meta_model.to_frame())), neutralizers
+        ).iloc[:, 0]
         assert not np.allclose(
             neutral_contribution(predictions, meta_model, neutralizers, targets),
             contribution_scores(
-                orthogonalize(variance_normalize(neutral_preds).values, raw_mm.values),
+                orthogonalize(variance_normalize(neutral_preds).values, neutral_mm.values),
                 targets.copy(),
                 predictions,
             ),
